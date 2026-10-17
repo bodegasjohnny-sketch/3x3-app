@@ -338,3 +338,6 @@ pre.json:focus-visible{outline:2px solid #00C2FF;outline-offset:2px}
 .finalart .pcap{color:#FFFFFF;background:rgba(11,15,26,.88);padding:4px 6px;border-radius:6px;text-shadow:none}
 .finalart .pcap .paff{color:#FFE08A}
 .drafthist summary{cursor:pointer;color:var(--mute,#9aa3b2)}
+/* Final card: caption plate and disclaimer stacked in one flex column, so they can never overlap (was ~2 px) */
+.finalart .fstack{position:absolute;left:8px;right:8px;bottom:10%;z-index:3;display:flex;flex-direction:column;gap:6px}
+.finalart .fstack .pcap,.phone.mini9 .fstack .fdisc{position:static;top:auto;bottom:auto;left:auto;right:auto}

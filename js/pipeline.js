@@ -60,7 +60,7 @@
         return {plat:x, mode, account:acct, kids: kids && x === 'yt', reach_only: x === 'tt' && I.dur <= 60}; }); },
     /* connected channel/Page vs this project's brand (simulated name check; production compares the channel/Page id saved with the brand) */
     brandMismatch(p){ const conns = Store.getConnections(), I = p.intake;
-      return P.publishTargets(p).filter(t => { const c = M3.CONNS.find(cc => cc.plat === t.plat); return M3.isOk(conns[c.id]) && !M3.brandMatches(t.account, I.name, I.handle); }).map(t => ({plat:t.plat, account:t.account, brand:I.name})); },
+      return P.publishTargets(p).filter(t => { const c = M3.CONNS.find(cc => cc.plat === t.plat); return M3.isOk(conns[c.id]) && !M3.brandMatches(t.account, I.name, I.handle); }).map(t => ({plat:t.plat, account:t.account, brand:I.name, flags:M3.brandFlags(t.account)})); },
     /* made-for-kids comes from the compiled, locked rules (rules.safety.made_for_kids), never the raw intake flag */
     kidsRule(p){ return !!(p.rules && p.rules.safety && p.rules.safety.made_for_kids === true); },
     ttDirect(p){ const I = p.intake; return !!Store.getFlags().tiktok_direct_post_audited && !M3.isAlcohol(I) && !!I.plat.tt && !P.kidsRule(p); },
@@ -85,10 +85,10 @@
     approve(id, k){ const p = Store.getProject(id), st = p.stages[k];
       if (P.eff(p, k) !== 'awaiting' || !P.ready(p, k)) return;
       if (k === 'script') { const hits = M3.scriptBanned(st.output.beats, p.rules); if (hits.length) { P.log(p, 'Script not approved: it uses banned words (' + hits.join(', ') + '). Edit the lines or regenerate.'); return; }
-        const ph = M3.scriptPlaceholders(st.output); if (ph.length) { P.log(p, 'Script not approved: ' + ph.length + ' line' + (ph.length > 1 ? 's are' : ' is') + ' still placeholder template text (' + ph.map(b => b.b).join(', ') + '). Write your own lines and save, then approve.'); return; } }
+        const ph = M3.scriptPlaceholders(st.output); if (ph.length) { P.log(p, 'Script not approved: ' + ph.length + ' line' + (ph.length > 1 ? 's are' : ' is') + ' still placeholder template text or too short (' + ph.map(b => b.b + ': ' + M3.PLACEHOLDER_WHY[M3.placeholderWhy(st.output, b)]).join(', ') + '). Write your own lines and save, then approve.'); return; } }
       if (k === 'voice' && !M3.voInWindow(st.output.seconds, p.intake.dur) && !P.voOverridden(st)) { const [lo, hi] = M3.voWindow(p.intake.dur); P.log(p, `Voiceover not approved: ${st.output.seconds}s is outside the ${lo}–${hi}s window for a ${p.intake.dur}s video. Edit the script, redo lines, or tick the length override.`); return; }
       st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now()};
-      if (k === 'voice' && P.voOverridden(st)) st.approval.length_override = {seconds:st.output.seconds, window:M3.voWindow(p.intake.dur)};
+      if (k === 'voice' && P.voOverridden(st) && !M3.voInWindow(st.output.seconds, p.intake.dur)) st.approval.length_override = {seconds:st.output.seconds, window:M3.voWindow(p.intake.dur)};
       P.log(p, `${M3.stage(k).n} approved · lock ${M3.hash([st.inputHash, st.output.hash]).slice(0,8)}`);
       const n = P.nextKey(p, k); if (n && p.stages[n].status === 'idle') P.start(p, n);
     },
@@ -117,8 +117,10 @@
     /* Voice length override: only for this exact take (output hash); a new take needs a new override */
     voOverridden(st){ return !!(st.lenOverride && st.output && st.lenOverride.hash === st.output.hash); },
     setVoOverride(id, on){ const p = Store.getProject(id), st = p.stages.voice; if (P.eff(p, 'voice') !== 'awaiting' || !st.output) return;
+      const win = M3.voWindow(p.intake.dur).join('–');
+      if (on && M3.voInWindow(st.output.seconds, p.intake.dur)) { st.lenOverride = null; P.log(p, `Voiceover length override not applied: ${st.output.seconds}s is already inside the ${win}s window, so no override is needed`); return; }
       st.lenOverride = on ? {hash:st.output.hash, at:now(), seconds:st.output.seconds} : null;
-      P.log(p, on ? `Voiceover length override by you: approving ${st.output.seconds}s outside the ${M3.voWindow(p.intake.dur).join('–')}s window` : 'Voiceover length override removed'); },
+      P.log(p, on ? `Voiceover length override by you: approving ${st.output.seconds}s outside the ${win}s window` : 'Voiceover length override removed'); },
     /* Voice gate: redo one line (re-stitched and re-timed in production); new output hash, so approval is per take */
     redoLine(id, i){ const p = Store.getProject(id), st = p.stages.voice; if (P.eff(p, 'voice') !== 'awaiting' || !st.output || !st.output.lines || !st.output.lines[i]) return;
       const ln = st.output.lines[i]; ln.v = (ln.v || 1) + 1; const { hash, ...rest } = st.output; st.output.hash = M3.hash(rest);

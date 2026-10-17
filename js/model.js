@@ -48,36 +48,91 @@ M.publishNote = (p, kids) => { const I = (p && p.intake) || {}, t = ['Nothing is
   if (M.isAlcohol(I)) t.push('Alcohol-history videos are never auto-published and never made public by 3x3: you answer for each post on each platform (YouTube is uploaded private and 3x3 leaves it private, TikTok goes to your inbox drafts, Facebook and Instagram are held until you answer).');
   if (kids) t.push('Kids videos go to YouTube only, marked Made for Kids.');
   return t.join(' '); };
-/* Banned-word lint for script text. The locked disclaimer is exempt, so a banned 'financial advice' never trips on the forced 'Not financial advice.' */
-M.lintBanned = (text, banned, disclaimer) => { let t = String(text || '');
-  const d = String(disclaimer || '').trim();
-  if (d) [d].concat(d.split(/(?<=[.!?])\s+/).map(x => x.replace(/[.!?]+$/, '')).filter(x => x.length >= 8)).forEach(x => { t = t.replace(new RegExp(x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' '); });   // whole disclaimer, and each of its sentences
-  return M.bannedHits(t, banned || []); };
+/* Banned-word lint for script text. The locked disclaimer is exempt, so a banned 'financial advice' never trips on the forced 'Not financial advice.'
+   Only a WHOLE STANDALONE disclaimer sentence is exempt: it must start the line or follow a sentence end (. ! ?), and end the line or be
+   followed by a sentence end. 'Crypto is high risk-free' or 'Not financial advice, just buy' are NOT stripped, so the rest is still checked. */
+M.discSentences = d => { d = String(d || '').trim(); if (!d) return [];
+  return [...new Set([d.replace(/[.!?]+$/, '')].concat(d.split(/(?<=[.!?])\s+/).map(x => x.trim().replace(/[.!?]+$/, '')).filter(x => x.length >= 8)))]; };
+M.stripDisclaimer = (text, disclaimer) => { let t = String(text || '');
+  M.discSentences(disclaimer).sort((a, b) => b.length - a.length).forEach(x => {
+    const re = new RegExp('((?:^|[.!?]["\u201D\u2019)\\]]*\\s+)\\s*["\u201C\u2018(\\[]*)' + x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') + '[.!?]*(?=["\u201D\u2019)\\]]*(?:\\s|$))', 'gim');
+    for (let i = 0; i < 4; i++) { const o = t; t = t.replace(re, '$1 . '); if (t === o) break; } });
+  return t; };
+/* A second pass removes disclaimer sentences anywhere (as before) and can only ADD hits for words the disclaimer itself doesn't contain,
+   so splices like 'guaranteed reNot financial adviceturns' are still caught. */
+M.lintBanned = (text, banned, disclaimer) => { const B = banned || [], hits = M.bannedHits(M.stripDisclaimer(text, disclaimer), B);
+  let t = String(text || ''); M.discSentences(disclaimer).forEach(x => { t = t.replace(new RegExp(x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' '); });
+  const inDisc = new Set(M.bannedHits(String(disclaimer || ''), B));
+  return B.filter(w => hits.includes(w) || (!inDisc.has(w) && M.bannedHits(t, [w]).length)); };
 /* ---------- script placeholder gate ----------
-   Simulated drafts use these template patterns (one per Regenerate draft, cycling). A hook or item line counts as a placeholder
-   until it is a real rewrite: after normalising (NFKC, zero-width/format chars stripped, confusables folded like the topic filter,
-   punctuation dropped, whitespace collapsed, lowercased), more than half of the content words of ANY template variant (any draft,
-   any beat) must be gone. Topic words and stop-words don't count, so reusing your own topic is fine. Decided from the saved text on
-   every render, save and Approve, never from a flag. The production server must re-run this same check before accepting Approval 1. */
+   Simulated drafts use these template patterns (one per Regenerate draft, cycling). A hook or item line (not the CTA) is a placeholder when:
+   (1) it has fewer than M.MIN_LINE_WORDS real words (punctuation, emoji, single letters, numbers, stop-words, keyboard mash like 'asdf'
+       don't count), or it is lorem-ipsum filler; or
+   (2) it still matches ANY template variant (any draft, any beat): more than half of the template's word PAIRS (bigrams, with the topic
+       slot as one token) survive, OR at least 2/3 of the template's words are present while the line adds at most 2 words of its own
+       (catches reordering and filler between words).
+   Text is normalised first: HTML entities, NFKC, zero-width/format/bidi chars stripped, the full Unicode confusables table
+   (js/confusables.js, from confusables.txt) plus Greek/Cyrillic maps, digit/leet swaps (0->o 1->i 3->e 4->a 5->s 7->t @ $ ! |),
+   1/I/l treated alike, accents and punctuation dropped, lower-cased. Stop-words are ignored; the user's topic written in full counts as
+   the topic slot, so a topic that contains a template's words never disables that template. Decided from the saved text on every render,
+   save and Approve, never from a flag. The production server must re-run this same check before accepting Approval 1. */
 M.SCRIPT_HOOKS = [(T, t) => `"${T}": the version most people never hear.`, (T, t) => `Stop scrolling: ${t}, in under a minute.`, (T, t) => `Most people get this wrong: ${t}.`, (T, t) => `${T}? Here's what actually holds up.`, (T, t) => `You've been told the opposite. ${T}, explained.`];
 M.SCRIPT_ITEMS = [(b, t) => `${b}: one verifiable point about ${t}, with a plain-words example.`, (b, t) => `${b}: a specific, sourced fact on ${t} (one idea, one number at most).`, (b, t) => `${b}: a quick, checkable tip about ${t}, source shown on screen.`, (b, t) => `${b}: the common myth about ${t}, and what the source actually says.`, (b, t) => `${b}: one practical step for ${t} you can try today.`];
 M.scriptTemplates = (topic, labels) => { const T = topic || 'Your topic', t = T.toLowerCase(), L = labels || [];
   return M.SCRIPT_HOOKS.map(f => f(T, t)).concat(...M.SCRIPT_ITEMS.map(f => L.map(b => f(b, t)))); };
-M.normLine = x => M.fold(String(x || '').replace(/[\p{Cf}\u00AD\u034F\u115F\u1160\u3164]/gu, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+M.normLine = x => M.leet(M.fold(M.decodeEntities(String(x || '')).replace(/[\p{Cf}\u00AD\u034F\u115F\u1160\u3164]/gu, ''))).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const STOPW = new Set('a an the and or of to in on at for with by is are be it its this that you your yours we our i my me as so do does not no'.split(' '));
 M.lineTokens = x => M.normLine(x).split(' ').filter(w => w && !STOPW.has(w));
-M.PLACEHOLDER_SHARE = 0.5;
-/* highest share of any template's content words still present in the line (0..1) */
-M.templateShare = (line, templates, topic) => { const own = new Set(M.lineTokens(topic)), have = new Set(M.lineTokens(line)); let best = 0;
-  (templates || []).forEach(tp => { const tk = [...new Set(M.lineTokens(tp))].filter(w => !own.has(w)); if (!tk.length) return; const sh = tk.filter(w => have.has(w)).length / tk.length; if (sh > best) best = sh; });
+M.PLACEHOLDER_SHARE = 0.5;      // more than this share of a template's word pairs = still the template
+M.PLACEHOLDER_WORDS = 2 / 3;    // ... or this share of its words with at most PLACEHOLDER_NOVEL words of your own
+M.PLACEHOLDER_NOVEL = 2;
+M.MIN_LINE_WORDS = 3;
+const LOREM = new Set('lorem ipsum dolor amet consectetur consectetuer adipiscing adipisicing elit eiusmod tempor incididunt labore dolore aliqua veniam nostrud exercitation ullamco laboris aliquip commodo consequat duis aute irure reprehenderit voluptate cillum fugiat nulla pariatur excepteur occaecat cupidatat proident deserunt mollit laborum'.split(' '));
+const KEYROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', 'poiuytrewq', 'lkjhgfdsa', 'mnbvcxz'];
+const isMash = w => w.length >= 3 && KEYROWS.some(r => r.includes(w));
+const GAP = '\u0000', TMARK = 'qqtopicqq', LMARK = 'qqlabelqq', ilk = w => w.replace(/l/g, 'i');
+/* words that count as real: letters, 2+ chars, not a stop-word, not lorem/keyboard mash, Latin words need a vowel */
+M.realWords = line => [...new Set(M.normLine(line).split(' ').filter(w => w && /\p{L}/u.test(w) && [...w].length >= 2 && !STOPW.has(w) && !LOREM.has(w) && !isMash(w) && (!/^[a-z]+$/.test(w) || /[aeiouy]/.test(w))))];
+M.isLorem = line => { const w = M.normLine(line).split(' '); return w.some(x => x === 'lorem' || x === 'ipsum') || w.filter(x => LOREM.has(x)).length >= 2; };
+/* content stream: stop-words and bare numbers dropped, keys with l->i; the topic (written in full) and the template topic/label slots become GAP */
+const stream = (text, topicKeys, labelKeys) => { let a = M.lineTokens(text).filter(w => !/^\p{N}+$/u.test(w)).map(w => (w === TMARK || w === LMARK) ? GAP : ilk(w));
+  if (labelKeys && labelKeys.size) { let i = 0; while (i < a.length && i < 3 && labelKeys.has(a[i])) a[i++] = GAP; }
+  const n = topicKeys.length; if (n) for (let i = 0; i + n <= a.length; i++) if (topicKeys.every((k, j) => a[i + j] === k)) { a.splice(i, n, GAP); }
+  return a.filter((w, i) => !(w === GAP && a[i - 1] === GAP)); };
+const bigrams = a => { const s = new Set(); for (let i = 0; i + 1 < a.length; i++) if (!(a[i] === GAP && a[i + 1] === GAP)) s.add(a[i] + ' ' + a[i + 1]); return s; };
+const skel = str => stream(String(str).replace(LMARK, ''), [], null);   // the item's label slot is dropped; the topic slot stays as one token
+M.TEMPLATE_SKELETONS = () => M.SCRIPT_HOOKS.map(f => f(TMARK, TMARK)).concat(M.SCRIPT_ITEMS.map(f => f(LMARK, TMARK)));
+const cmp = (line, skStr, topic, labels) => {
+  const tk = M.lineTokens(topic).filter(w => !/^\p{N}+$/u.test(w)).map(ilk), lk = new Set((labels || []).flatMap(b => M.lineTokens(b)).filter(w => !/^\p{N}+$/u.test(w)).map(ilk));
+  const L = stream(line, tk, lk), S = skel(skStr), sw = new Set(S.filter(w => w !== GAP)), lw = new Set(L.filter(w => w !== GAP)), tset = new Set(tk);
+  const SB = bigrams(S), LB = bigrams(L), bi = SB.size ? [...SB].filter(x => LB.has(x)).length / SB.size : 0;
+  const ws = sw.size ? [...sw].filter(w => lw.has(w)).length / sw.size : 0, novel = [...lw].filter(w => !sw.has(w) && !tset.has(w) && !lk.has(w)).length;
+  return {bigram:bi, words:ws, novel, hit:bi > M.PLACEHOLDER_SHARE || (ws >= M.PLACEHOLDER_WORDS - 1e-9 && novel <= M.PLACEHOLDER_NOVEL)}; };
+/* full verdict for one line: {placeholder, why: 'too-short' | 'lorem' | 'template' | '', share} */
+M.placeholderCheck = (line, topic, labels, templates) => {
+  if (M.isLorem(line)) return {placeholder:true, why:'lorem', share:1};
+  if (M.realWords(line).length < M.MIN_LINE_WORDS) return {placeholder:true, why:'too-short', share:1};
+  const T = topic || 'Your topic', sks = templates ? templates.map(x => String(x).split(T).join(TMARK).split(T.toLowerCase()).join(TMARK)) : M.TEMPLATE_SKELETONS();
+  let best = 0, hit = false; sks.forEach(sk => { const r = cmp(line, sk, T, labels); if (r.hit) hit = true; best = Math.max(best, r.hit ? 1 : r.bigram); });
+  return {placeholder:hit, why:hit ? 'template' : '', share:best}; };
+/* 0..1 score against the given (rendered) templates or the built-in ones; > PLACEHOLDER_SHARE means placeholder (1 when the word rule trips) */
+M.templateShare = (line, templates, topic) => { const T = topic || 'Your topic'; let best = 0;
+  (templates && templates.length ? templates.map(x => String(x).split(T).join(TMARK).split(T.toLowerCase()).join(TMARK)) : M.TEMPLATE_SKELETONS()).forEach(sk => { const r = cmp(line, sk, T, []); best = Math.max(best, r.hit ? 1 : r.bigram); });
   return best; };
-/* hook + item lines (not the CTA, which is your own text) that are still template text */
-M.scriptPlaceholders = o => { const B = (o && o.beats) || [], tps = M.scriptTemplates(o && o.topic, B.map(b => b.b));
-  return B.filter((b, i) => i < B.length - 1).filter(b => M.templateShare(b.line, tps, o.topic) > M.PLACEHOLDER_SHARE); };
+M.PLACEHOLDER_WHY = {lorem:'lorem ipsum filler', 'too-short':'needs ' + M.MIN_LINE_WORDS + '+ real words', template:'template text'};
+/* hook + item lines (not the CTA, which is your own text) that are still placeholders */
+M.scriptPlaceholders = o => { const B = (o && o.beats) || [], labels = B.map(b => b.b);
+  return B.filter((b, i) => i < B.length - 1).filter(b => M.placeholderCheck(b.line, o.topic, labels).placeholder); };
+M.placeholderWhy = (o, b) => M.placeholderCheck(b.line, o && o.topic, ((o && o.beats) || []).map(x => x.b)).why;
 /* connected channel/Page vs the project's brand: exact match after normalising (NFKC, format chars stripped, case, '(Page)', '@',
    punctuation, spaces). Lookalike letters are NOT folded here, so "Money Minute PН" with a Cyrillic Н is a mismatch. Anything else
    warns. Production compares the channel/Page ID saved with the brand instead of names. */
-M.brandKey = v => String(v || '').normalize('NFKC').replace(/[\p{Cf}\u00AD]/gu, '').toLowerCase().replace(/\(page\)/g, '').replace(/^\s*@/, '').replace(/[^\p{L}\p{N}]+/gu, '');
+const BIDI_RE = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+/* combining marks (Mo\u0335ney) and bidi/RTL override characters are KEPT in the key, so they never match a plain brand */
+M.brandKey = v => String(v || '').normalize('NFKC').replace(/[\p{Cf}\u00AD]/gu, c => BIDI_RE.test(c) ? c : '').toLowerCase().replace(/\(page\)/g, '').replace(/^\s*@/, '').replace(/[^\p{L}\p{N}\p{M}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]+/gu, '');
+/* what the mismatch card shows: bidi controls removed (so 'PH' can't display as 'HP') plus a note of what was hidden */
+M.brandFlags = v => { const s = String(v || '').normalize('NFKC'), f = []; if (BIDI_RE.test(s)) f.push('hidden text-direction (bidi/RTL override) characters'); if (/\p{M}/u.test(s.replace(BIDI_RE, ''))) f.push('combining marks over letters'); return f; };
+M.brandShow = v => String(v || '').replace(new RegExp(BIDI_RE.source, 'gu'), '');
 M.brandMatches = (account, brand, handle) => { const a = M.brandKey(account); if (!a) return false; return [brand, handle].map(M.brandKey).filter(Boolean).some(b => a === b); };
 /* Voice gate length window: spec format tolerance ±3 s around the target, checked on VO length */
 M.VO_TOL = 3;
@@ -196,7 +251,10 @@ const CAPCONF = {'Α':'a','Β':'b','Ε':'e','Ζ':'z','Η':'h','Ι':'i','Κ':'k',
 const CONF = {'а':'a','е':'e','о':'o','р':'p','с':'c','у':'y','х':'x','к':'k','м':'m','т':'t','в':'b','н':'h','і':'i','ї':'i','ј':'j','ѕ':'s','ԁ':'d','ɡ':'g','ӏ':'l','ո':'n','ս':'u',
   'α':'a','ο':'o','ρ':'p','ν':'v','τ':'t','ι':'i','κ':'k','ε':'e','υ':'u','χ':'x','β':'b','η':'n','ⅰ':'i','ı':'i','ℓ':'l'};
 const LEET = {'0':'o','1':'i','3':'e','4':'a','5':'s','7':'t','@':'a','$':'s','!':'i','|':'l'};
-M.fold = t => String(t || '').normalize('NFKC').replace(/[\u0370-\u03FF\u0400-\u052F]/gu, ch => CAPCONF[ch] || ch).toLowerCase().replace(/./gu, ch => CONF[ch] || ch).normalize('NFD').replace(/\p{M}+/gu, '')
+/* full Unicode confusables table (js/confusables.js, generated from confusables.txt by tools/build_confusables.py), after the maps above */
+const CONFX = (typeof window !== 'undefined' && window.CONFUSABLES_ASCII) || {};
+M.CONFX_SIZE = Object.keys(CONFX).length;
+M.fold = t => String(t || '').normalize('NFKC').replace(/[\u0370-\u03FF\u0400-\u052F]/gu, ch => CAPCONF[ch] || ch).toLowerCase().replace(/./gu, ch => CONF[ch] || ch).replace(/[^\x00-\x7F]/gu, ch => CONFX[ch] || ch).normalize('NFD').replace(/\p{M}+/gu, '')
   .replace(/(?<=[\p{L}\p{N}])[-._·•'’*]+(?=[\p{L}\p{N}])/gu, '')            // cryp-to, w.h.i.s.k.y
   .replace(/(?:(?<![\p{L}\p{N}])[\p{L}\p{N}$@](?:\s+|[-._·•]+)){2,}[\p{L}\p{N}$@](?![\p{L}\p{N}])/gu, m => m.replace(/[\s\-._·•]+/gu, ''));  // c r y p t o, 1 0 0 x
 M.leet = t => t.replace(/[\p{L}\p{N}$@!|]+/gu, w => /\p{L}/u.test(w) && !/^\d+x$/.test(w) ? w.replace(/[013457@$!|]/g, c => LEET[c]) : w);

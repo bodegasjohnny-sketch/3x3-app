@@ -251,7 +251,7 @@ with sync_playwright() as p:
     ok('qa_e_rules_record_ai_label_mode_and_reason', lr['ai_disclosure']['label'] == 'auto' and lr['ai_disclosure']['labels_on'] is True and 'synthetic narrator' in lr['ai_disclosure']['reason'] and lr['ai_disclosure']['tools_line'] is True)
     ok('lr01_qa_g_site_added_financial_advice_removed', 'financial advice' not in lr['safety']['banned_words'] and 'financial advice' not in E(pl, "M3.BANNED_PRESET.finance") and 'financial advice' in disc.lower())
     lr_user = json.loads(json.dumps(lr)); lr_user['safety']['banned_words'] = lr['safety']['banned_words'] + ['financial advice']   # a user can still add it; the disclaimer stays exempt
-    lint = E(pl, f"(()=>{{const r={json.dumps(lr_user)};return {{ok:M3.scriptBanned([{{line:r.safety.disclaimer.text}},{{line:'Not financial advice, just habits.'}}],r), bad:M3.scriptBanned([{{line:'This is financial advice: buy now.'}}],r)}}}})()")
+    lint = E(pl, f"(()=>{{const r={json.dumps(lr_user)};return {{ok:M3.scriptBanned([{{line:r.safety.disclaimer.text}},{{line:'Not financial advice. Just habits.'}}],r), bad:M3.scriptBanned([{{line:'This is financial advice: buy now.'}}],r)}}}})()")
     ok('lr01_disclaimer_exempt_affirmative_still_banned', lint['ok'] == [] and lint['bad'] == ['financial advice'])
     pl.click('[data-act="create"]'); pl.wait_for_timeout(600); lp = E(pl, "location.hash.split('/')[2]"); E(pl, "Sim3x3.speed=3")
     wait(pl, lp, 'script', ('awaiting',))
@@ -297,6 +297,39 @@ with sync_playwright() as p:
     for name, lines in BYP.items():
         en = put(lines); ref = E(pl, f"(Pipeline.approve('{lp}','script'), Pipeline.eff(Store.getProject('{lp}'),'script'))")
         ok(f'qa_bypass_{name}_blocked', en is False and ref == 'awaiting')
+    # spot-check face9fd: more bypasses through the UI (all 6 hook/item lines), each must leave Approve off and be refused by Pipeline.approve
+    import random as _rnd
+    _r = _rnd.Random(7)
+    def _shuf(x): w = x.split(); _r.shuffle(w); return ' '.join(w)
+    def _fw(x): return ''.join(chr(ord(c) + 0xFEE0) if 'a' <= c <= 'z' else c for c in x)
+    def _mb(x): return ''.join(chr(0x1D41A + ord(c) - 97) if 'a' <= c <= 'z' else c for c in x)
+    def six(v): return [v] * 6 + [tl[-1]]
+    BYP2 = {
+        'word_reorder': mod(_shuf), 'filler_every_word': mod(lambda x: ' really '.join(x.split())),
+        'long_filler_appended': mod(lambda x: x + ' Honestly, this is a big deal for everyone who shops online every single week and month.'),
+        'greek_omicron': mod(lambda x: x.replace('o', '\u03bf')), 'fullwidth': mod(_fw), 'maths_bold': mod(_mb),
+        'leet_digits': mod(lambda x: x.replace('o', '0').replace('i', '1').replace('e', '3')),
+        'leet_more': mod(lambda x: x.replace('a', '4').replace('s', '5').replace('t', '7').replace('l', '1')),
+        'armenian_oh': mod(lambda x: x.replace('o', '\u0585')), 'latin_alpha': mod(lambda x: x.replace('a', '\u0251')),
+        'small_caps': mod(lambda x: x.replace('o', '\u1d0f').replace('e', '\u1d07')), 'cherokee': mod(lambda x: x.replace('a', '\uab7a')),
+        'cyrillic_shha': mod(lambda x: x.replace('h', '\u04bb')), 'dotless_i': mod(lambda x: x.replace('i', '\u0131')),
+        'empty_dot': six('.'), 'empty_dash': six('\u2014'), 'emoji_only': six('\U0001F600'), 'single_x': six('x'),
+        'lorem_ipsum': six('Lorem ipsum dolor sit amet.'), 'lorem_leet': six('L0rem 1psum d0lor sit amet, consectetur.'), 'keyboard_mash': six('asdf qwer zxcv'),
+        'two_words': six('Spend less.'),
+    }
+    for name, lines in BYP2.items():
+        en = put(lines); ref = E(pl, f"(Pipeline.approve('{lp}','script'), Pipeline.eff(Store.getProject('{lp}'),'script'))")
+        ok(f'qa5_bypass_{name}_blocked', en is False and ref == 'awaiting')
+    ok('qa5_placeholder_log_names_reason', 'too short' in E(pl, f"Store.getProject('{lp}').log[0].text") and 'needs 3+ real words' in pl.inner_text('#stage-script .phbox'))
+    # genuine rewrites that the old word-share rule blocked must now pass (UI, one line at a time on top of a clean script)
+    base_ok = ['Impulse buys cost more than you think, so here are five habits that stop them.', 'Number five: wait a full day before any purchase over a few hundred pesos.', 'Number four: delete saved cards from shopping apps so checkout takes effort.', 'Number three: unfollow stores that flood your feed with flash sales.', 'Number two: set a weekly fun budget in cash and stick to it.', 'Number one: write down what you almost bought; most urges fade in a week.', tl[-1]]
+    for name, i, line in [('most_people_wrong_payday', 0, 'Most people get impulse spending wrong, and it costs them every payday.'), ('heres_what_actually_works', 0, "Here's what actually works to stop impulse spending."), ('item_try_today_cart', 1, '#5: One step you can try today: leave it in the cart for a day.')]:
+        L = list(base_ok); L[i] = line
+        ok(f'qa5_genuine_{name}_passes', put(L) is True and E(pl, f"M3.scriptPlaceholders(Store.getProject('{lp}').stages.script.output).length") == 0)
+    ok('qa5_genuine_other_rewrites_pass_unit', E(pl, """(()=>{const T='5 simple habits to stop impulse spending',L=M3.BEATS.list;return ["Stop scrolling for a minute: your cart can wait.","You've been told to just use willpower. That's the opposite of what works.","#4: The common myth is that you just need more willpower. What actually helps is fewer store emails.","#1: One question about every buy, for example: will I use this next month?",'#3: Quick tip: write a list and check it on screen before you pay.','Impulse buys add up fast.','Delete saved cards.','Write down near-buys.'].every(x=>!M3.placeholderCheck(x,T,L).placeholder)})()"""))
+    ok('qa5_every_variant_every_format_blocked_unit', E(pl, """(()=>{const T='5 simple habits to stop impulse spending',t=T.toLowerCase();return ['list','story','reveal'].every(f=>{const L=M3.BEATS[f];return [0,1,2,3,4].every(v=>L.slice(0,6).every((b,i)=>M3.placeholderCheck(i?M3.SCRIPT_ITEMS[v](b,t):M3.SCRIPT_HOOKS[v](T,t),T,L).placeholder))})})()"""))
+    ok('qa5_topic_containing_template_words_still_blocked', E(pl, """(()=>{const T='Why most people get saving wrong',L=M3.BEATS.list;return M3.placeholderCheck('Most people get this wrong: why most people get saving wrong.',T,L).placeholder && M3.scriptPlaceholders({topic:T,beats:[{b:'Hook',line:'Most people get this wrong: why most people get saving wrong.'},{b:'CTA',line:'Follow'}]}).length===1 && !M3.placeholderCheck('Why most people get saving wrong, and how to fix it fast.',T,L).placeholder})()"""))
+    ok('qa5_confusables_table_loaded', E(pl, "M3.CONFX_SIZE>1500 && M3.fold('\u0585\u0251\u1d0f\u1d07\uab7a')==='oaoea' && M3.normLine('p01nt 3xampl3')==='point example'"))
     real = ['Impulse buys cost more than you think, so here are five habits that stop them.', 'Number five: wait a full day before any purchase over a few hundred pesos.', 'Number four: delete saved cards from shopping apps so checkout takes effort.', 'Number three: unfollow stores that flood your feed with flash sales.', 'Number two: set a weekly fun budget in cash and stick to it.', 'Number one: write down what you almost bought; most urges fade in a week.', tl[-1]]
     ok('qa_b_real_rewrite_unlocks_approve', put(real) is True)
     ok('qa_bypass_edit_then_revert_blocked', put(tl) is False and E(pl, f"(Pipeline.approve('{lp}','script'), Pipeline.eff(Store.getProject('{lp}'),'script'))") == 'awaiting')
@@ -342,7 +375,10 @@ with sync_playwright() as p:
       const L=c=>{const [r,g,b]=c.slice(0,3).map(v=>{v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4)});return 0.2126*r+0.7152*g+0.0722*b};
       const fg=rgb(cs.color),bg=rgb(cs.backgroundColor),a=bg[3]===undefined?1:bg[3],base=[255,255,255];const mix=bg.slice(0,3).map((v,i)=>v*a+base[i]*(1-a));
       const l1=L(fg),l2=L(mix);return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05)})()""")
+    gap390 = E(pl, "(()=>{const a=document.querySelector('#stage-final .pcap').getBoundingClientRect(),b=document.querySelector('#stage-final .fdisc').getBoundingClientRect();return b.top-a.bottom})()")
     pl.set_viewport_size({'width': 1440, 'height': 900}); pl.wait_for_timeout(300)
+    gap1440 = E(pl, "(()=>{const a=document.querySelector('#stage-final .pcap').getBoundingClientRect(),b=document.querySelector('#stage-final .fdisc').getBoundingClientRect();return b.top-a.bottom})()")
+    ok('qa5_caption_plate_clear_of_disclaimer', gap390 >= 2 and gap1440 >= 2)
     ok('qa4_final_caption_contrast_at_least_4_5', cc >= 4.5)
     ok('lr02_final_includes_locked_disclaimer', any(l.startswith('Disclaimer') and disc in l for l in fo['labels']) and disc in pl.inner_text('#stage-final .fdisc'))
     pl.locator('#stage-final [data-x="approve"]').click(); wait(pl, lp, 'publish', ('needs',)); pl.wait_for_timeout(500)
@@ -387,10 +423,32 @@ with sync_playwright() as p:
     ok('nit_finance_numbers_dropped', E(pn, "JSON.stringify(Intake.fitSeeds(['Build a 3–6 months emergency fund','Save ₱25,000 in a year','Envelope method in 30 seconds','5 habits of savers','Cut 20% of spending'],'list',45,true))") == json.dumps(['Envelope method in 45 seconds','5 habits of savers'], ensure_ascii=False, separators=(',',':')))
     finbad = E(pn, """(()=>{const bad=[];RS_DATA.cats.forEach(c=>c.subs.forEach(s=>{if(!(s.bundles||[]).some(b=>b==='finance'||b==='crypto'))return;['list','story','reveal'].forEach(f=>Intake.fitSeeds(s.seeds,f,45,true).forEach(t=>{const r=t.replace(/\\bin \\d+ seconds?\\b/gi,'').replace(f==='list'?/^(?:top\\s+)?5\\s+/i:/^$/,'');if(/[\\d₱$€£%]/.test(r))bad.push(t)}))}));return bad})()""")
     ok('nit_finance_suggestions_have_no_unsourced_numbers', finbad == [])
+    # spot-check face9fd: banned-word dodge via the disclaimer, brand lookalikes, topic counts
+    ok('qa5_disclaimer_substring_dodge_blocked', E(pn, """(()=>{const d='Education only. Not financial advice. Crypto is high risk.',w=['guaranteed returns','risk-free','financial advice'],r={safety:{banned_words:w,disclaimer:{text:d}}},h=l=>M3.scriptBanned([{line:l}],r);
+      return JSON.stringify(h('Crypto is high risk-free, they say.'))==='["risk-free"]' && JSON.stringify(h('Crypto is high risk. Risk-free, they say.'))==='["risk-free"]' && h(d).length===0 && h('Crypto is high risk!').length===0
+        && JSON.stringify(h('guaranteed reNot financial adviceturns'))==='["guaranteed returns","financial advice"]' && h('riNot financial advicesk-free').includes('risk-free')})()"""))
+    ok('qa5_nfa_exemption_standalone_sentence_only', E(pn, """(()=>{const r={safety:{banned_words:['financial advice'],disclaimer:{text:'For education only. Not financial advice.'}}},h=l=>M3.scriptBanned([{line:l}],r);
+      return h('Not financial advice, just habits.').length===1 && h('Not financial advice: buy now.').length===1 && h('Not financial advice. Just habits.').length===0 && h('Just habits. Not financial advice.').length===0 && h('"Not financial advice." Then save.').length===0 && h('This is financial advice.').length===1})()"""))
+    ok('qa5_crypto_disclaimer_text_in_data', 'Crypto is high risk.' in (Path(__file__).resolve().parent.parent / 'js' / 'data.js').read_text())
+    bm2 = E(pn, """(()=>{const B='Money Minute PH',H='@moneyminuteph',f=a=>M3.brandMatches(a,B,H);return {miss:['Mo\\u0335ney Minute PH','Money Minute \\u202EPH','Money Minute \\u2067PH','Money\\u200F Minute PH','Mo\\u0301ney Minute PH'].filter(f),
+      hit:['Money Minute PH','Money\\u200b Minute PH','\\uff2doney Minute PH','Money Minute PH (Page)'].filter(a=>!f(a)), show:M3.brandShow('Money Minute \\u202EPH'), flags:M3.brandFlags('Money Minute \\u202EPH').length+M3.brandFlags('Mo\\u0335ney Minute PH').length+M3.brandFlags('Money Minute PH').length}})()""")
+    ok('qa5_brand_mismatch_combining_marks_and_bidi', bm2['miss'] == [] and bm2['hit'] == [] and bm2['show'] == 'Money Minute PH' and bm2['flags'] == 2)
+    ok('qa5_spelled_counts_dropped_for_list', E(pn, "JSON.stringify(Intake.fitSeeds(['The four stages of sleep','Thirteen ways to save','A dozen tips for renters','Eighteen facts about owls','The one habit that changed my savings','Five types of clouds','Why we sleep'],'list',45))") == json.dumps(['The one habit that changed my savings','Five types of clouds','Why we sleep'], separators=(',',':')))
+    ok('qa5_real_sleep_seed_four_stages_dropped', E(pn, """(()=>{let s=null;RS_DATA.cats.forEach(c=>c.subs.forEach(x=>{if((x.seeds||[]).includes('The four stages of sleep'))s=x}));return !!s && !Intake.fitSeeds(s.seeds,'list',45).includes('The four stages of sleep') && Intake.fitSeeds(s.seeds,'story',45).includes('The four stages of sleep')})()"""))
+    ok('qa5_finance_spelled_amounts_dropped', E(pn, "JSON.stringify(Intake.fitSeeds(['Save twenty five thousand pesos','The fifty-thirty-twenty rule','Sinking funds explained'],'list',45,true))") == json.dumps(['Sinking funds explained'], separators=(',',':')))
     import subprocess
     tracked = subprocess.run(['git', 'ls-files'], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent)).stdout
     ok('nit_no_pycache_committed', '__pycache__' not in tracked and '__pycache__' in (Path(__file__).resolve().parent.parent / '.gitignore').read_text())
     pn.close()
+    # spot-check face9fd: console override on an in-window take logs the right reason and stamps nothing
+    pv = page(); connect(pv); E(pv, "Intake.state.aiAck=true"); lock(pv); pv.click('[data-act="create"]'); pv.wait_for_timeout(600); pidv = E(pv, "location.hash.split('/')[2]"); E(pv, "Sim3x3.speed=3")
+    wait(pv, pidv, 'script', ('awaiting',)); fill(pv, pidv); pv.locator('#stage-script [data-x="approve"]').click(); pv.wait_for_timeout(300); wait(pv, pidv, 'voice', ('awaiting',))
+    inwin = E(pv, f"(p=>M3.voInWindow(p.stages.voice.output.seconds,p.intake.dur))(Store.getProject('{pidv}'))")
+    E(pv, f"Pipeline.setVoOverride('{pidv}',true)"); lgv = E(pv, f"Store.getProject('{pidv}').log[0].text")
+    ok('qa5_in_window_override_logs_correct_reason', inwin is True and 'already inside' in lgv and 'outside the' not in lgv and not E(pv, f"!!Store.getProject('{pidv}').stages.voice.lenOverride"))
+    pv.locator('#stage-voice [data-x="approve"]').click(); pv.wait_for_timeout(300)
+    ok('qa5_in_window_approval_has_no_length_override', E(pv, f"(s=>s.status==='done'&&!s.approval.length_override)(Store.getProject('{pidv}').stages.voice)"))
+    pv.close()
     # (5) stuck routine reset card
     ps = page(); hash(ps, '#/connections', 500)
     ok('stuck_card_hidden_by_default', ps.locator('#conn-stuck').count() == 0)

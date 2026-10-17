@@ -185,15 +185,15 @@ const styleRec = () => { if(!REAL) return STYLE_REC[S.niche]||[]; const f=RD.fit
 const curSub = () => (N(S.niche).subs.find(s=>s[0]===S.sub)||[])[2];
 /* Suggested topics must fit the chosen format and length: "in 30 seconds" follows the project duration, and a List countdown
    (5 items) drops seeds with a different item count ("3 desk stretches", "Chicken adobo, 4 steps") or a 3-part rule ("50/30/20"). */
-const NUMW={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,fifteen:15,twenty:20};
+const NUMW={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,thirty:30,forty:40,fifty:50,hundred:100,dozen:12};
 const NUMRE='(\\d+|'+Object.keys(NUMW).join('|')+')', numv=x=>/^\d+$/.test(x)?+x:NUMW[x.toLowerCase()];
-const ITEMN='steps|elements|tips|ways|things|items|spots|habits|signs|facts|reasons|rules|foods|stretches|myths|mistakes|lessons|apps|tricks|hacks|secrets|questions|truths|moves';
+const ITEMN='steps|elements|tips|ways|things|items|spots|habits|signs|facts|reasons|rules|foods|stretches|myths|mistakes|lessons|apps|tricks|hacks|secrets|questions|truths|moves|stages|phases|types|kinds|levels|parts|pillars|principles|laws|layers|categories|methods|exercises|words|places|ideas|examples';
 /* finance bundle: a suggestion may not carry a figure without a source, so seeds with numbers (other than the length and the list count) are dropped */
 function fitSeeds(seeds, format, dur, fin){ const out=[];
   (seeds||[]).forEach(t0=>{ let t=String(t0).replace(/\bin (\d+) seconds?\b/gi, `in ${dur} seconds`).replace(/\b(\d+)-second (video|explainer|guide)\b/gi, `${dur}-second $2`);
     if(format==='list'){ const lead=t.match(new RegExp('^(?:top\\s+)?'+NUMRE+'\\s+(?![-–%])','i')), tail=t.match(new RegExp('\\b'+NUMRE+'\\s+(?:[a-z]+\\s+)?('+ITEMN+')\\b','i'));
-      const n=lead?numv(lead[1]):tail?numv(tail[1]):null; if(n!=null&&n!==5) return; if(/\b\d+\s*[\/-]\s*\d+\s*[\/-]\s*\d+\b/.test(t)) return; }
-    if(fin){ const rest=t.replace(/\bin \d+ seconds?\b/gi,'').replace(/\b\d+-second\b/gi,'').replace(format==='list'?/^(?:top\s+)?5\s+/i:/^$/,''); if(/[\d₱$€£¥%]/.test(rest)) return; }
+      const n=lead?numv(lead[1]):tail?numv(tail[1]):null; if(n!=null&&n!==5) return; if(new RegExp('\\b'+NUMRE+'\\s*[\\/-]\\s*'+NUMRE+'\\s*[\\/-]\\s*'+NUMRE+'\\b','i').test(t)) return; }
+    if(fin){ const rest=t.replace(/\bin \d+ seconds?\b/gi,'').replace(/\b\d+-second\b/gi,'').replace(format==='list'?/^(?:top\s+)?5\s+/i:/^$/,''); if(/[\d₱$€£¥%]/.test(rest)) return; if(/\b(?:hundred|thousand|million|billion|percent|pesos?)\b/i.test(rest)) return; }
     out.push(t); });
   return out; }
 const topics = () => { const sb=curSub(); if(!(REAL&&sb&&sb.seeds.length)) return TOPICS; const f=fitSeeds(sb.seeds,S.format,S.dur,bundleIds().some(b=>b==='finance'||b==='crypto')); return (f.length?f:[`${subName()}: ${S.format==='list'?'5 things to know':'explained'}`]).slice(0,5).map(t=>({t})); };
