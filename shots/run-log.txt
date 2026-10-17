@@ -9,10 +9,16 @@ step 8 gate OK
 shot 08-intake-safety-ai
 shot 09-intake-review
 shot 10-intake-locked
-project http://localhost:8765/?static=1#/project/prj_hkf34irlf5
+project http://localhost:8765/?static=1#/project/prj_ds1994d1pq
 shot 11-project-needs-you
 shot 12-connections-missing
-shot 13-connections-needs-you-login
+real-looking key rejected: Test mode: that looks like a real key, so it was rejected and not stor
+signing secret shown once: test_sig_b251d…
+shot 12b-connections-worker-secret
+worker failure message OK
+worker connected OK
+shot 13-connections-oauth-popup
+tiktok status: Connected as @healthybitesph (simulated)
 shot 14-connections-connected
 shot 15-project-script-approval
 approved script
@@ -26,6 +32,9 @@ shot 18-project-failed-retry
 shot 19-project-complete
 shot 20-projects
 shot 21-onboarding
+after rotate worker: pending
+shot 21b-connections-rotated
+re-connected: connected
 version now 2 locked versions 1
 alcohol warning shown: True
 crypto bundle: {'disc': 'Education only. Not financial advice. Crypto is high risk.', 'discLocked': True, 'forced': 18}

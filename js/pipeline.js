@@ -33,13 +33,20 @@
       const payload = {stage:k, intake:p.intake, topic:p.topic, intakeHash:p.rules.intake_hash, version:st.version, labels:P.labels(p)};
       if (opts.swap != null) { payload.swap = opts.swap; payload.prev = st.output.frames; }
       if (k === 'video') payload.frames = (p.stages.stills.output || {frames:[]}).frames.length;
-      if (k === 'publish') { const all = Object.keys(p.intake.plat).filter(x => p.intake.plat[x]); payload.manual = M3.isAlcohol(p.intake) ? all.filter(x => x === 'yt') : []; payload.platforms = all.filter(x => !payload.manual.includes(x)); }
+      if (k === 'publish') payload.targets = P.publishTargets(p);
       const job = Store.dispatchJob({kind:'stage', project_id:p.id, stage:k, payload});
       Object.assign(st, {status:'running', jobId:job.id, inputHash:P.inputHash(p, k), approval:null, missing:[], choice:false, error:null, forced:!!(opts.force && miss.length)});
-      P.log(p, `${sd.n}: job sent to worker${opts.swap != null ? ` (swap still #${opts.swap+1})` : ''}${st.forced ? ' (simulated anyway, connection missing)' : ''}`);
+      P.log(p, `${sd.n}: job sent to ${k === 'publish' ? '3x3 publish-broker (server)' : 'your Grok Bot worker'}${opts.swap != null ? ` (swap still #${opts.swap+1})` : ''}${st.forced ? ' (simulated anyway, connection missing)' : ''}`);
     },
-    publishMissing(p){ const conns = Store.getConnections(); const ids = ['worker'];
-      M3.CONNS.filter(c => c.plat && p.intake.plat[c.plat] && !(c.plat === 'yt' && M3.isAlcohol(p.intake))).forEach(c => ids.push(c.id)); if (p.intake.plat.ig) ids.push('facebook');
+    publishTargets(p){ const conns = Store.getConnections(), I = p.intake, alc = M3.isAlcohol(I), kids = (p.rules.rule_bundles_applied||[]).includes('kids') || I.kids;
+      return Object.keys(I.plat).filter(x => I.plat[x] && (!kids || x === 'yt')).map(x => {
+        const c = M3.CONNS.find(cc => cc.plat === x), acct = (conns[c.id] || {}).account || c.acct;
+        let mode = 'public';
+        if (alc) mode = ({yt:'private', fb:'unpublished', tt:'private (SELF_ONLY)', ig:'blocked until you confirm the account minimum age'})[x];
+        else if (x === 'tt') mode = 'private draft (TikTok audit pending)';
+        return {plat:x, mode, account:acct, kids: kids && x === 'yt', reach_only: x === 'tt' && I.dur <= 60}; }); },
+    publishMissing(p){ const conns = Store.getConnections(); const ids = [];
+      P.publishTargets(p).forEach(t => ids.push(M3.CONNS.find(c => c.plat === t.plat).id)); if (p.intake.plat.ig && ids.includes('instagram')) ids.push('facebook');
       return ids.filter((v,i,a) => a.indexOf(v) === i && !M3.isOk(conns[v])); },
     onJob(job){
       if (job.kind !== 'stage' || !job.project_id) return;

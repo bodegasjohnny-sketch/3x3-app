@@ -12,15 +12,20 @@
      projects table  : id uuid pk, owner uuid, name text, intake jsonb,
                        rules jsonb, stages jsonb, created_at timestamptz
      jobs table      : id uuid pk, owner uuid, project_id uuid null,
-                       kind text ('stage'|'connect'|'ping'), stage text,
+                       kind text ('stage'|'ping'), stage text,
                        payload jsonb, status text ('queued'|'running'|
                        'needs_you'|'done'|'failed'), output jsonb,
                        error text, created_at, updated_at
      connections     : owner uuid, id text, status text, meta jsonb
-                       (NO secrets here — secrets live in the user's own
-                       Grok Bot secret store)
+                       (routine key + social OAuth tokens live in Vault,
+                       never in this table or the browser; xAI/ElevenLabs
+                       keys live only in the user's Grok Bot)
 
-   Flow in production:
+   Flow in production (architecture v2.3, Option A):
+     0. Worker onboarding: routine webhook URL + routine key -> save-routine-key
+        (key to Vault, only last 4 shown); signing secret generated server-side,
+        shown once, stored by the user in their bot as THREEX3_SIGNING_SECRET.
+        Social sign-ins: official OAuth in the user's browser -> tokens to Vault.
      1. dispatchJob() inserts a row in `jobs`.
      2. A Supabase Edge Function (DB webhook on insert) signs the payload
         server-side (HMAC-SHA256 over body + timestamp + nonce, using the
@@ -28,6 +33,8 @@
         webhook. The browser never signs or sees the secret.
      3. The worker calls back (Edge Function endpoint, signature checked)
         to set status/output; the UI gets it through Realtime -> subscribe().
+     4. Publish jobs never go to the bot: the server-side publish-broker checks
+        the approval hash, bundle rules and quota, then posts via official APIs.
    ===================================================================== */
 (function(){
   const NS = '3x3.v1.';

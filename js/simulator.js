@@ -1,5 +1,5 @@
 /* 3x3 · SIMULATOR — LOCAL TEST MODE ONLY.
-   Pretends to be the user's Grok Bot worker. It receives jobs from Store.dispatchJob(), "runs" them on a
+   Pretends to be the user's Grok Bot worker (AI steps) and 3x3's server-side publish-broker (publish jobs). It receives jobs from Store.dispatchJob(), "runs" them on a
    timer, and reports back through Store.updateJob(), the way a real worker callback would.
    Delete this file (and its <script> tag) once SupabaseAdapter + real workers are wired up. */
 (function(){
@@ -14,7 +14,6 @@
       if (job.status === 'done' || job.status === 'failed' || job.status === 'needs_you') return;
       wait(250/S.speed, () => {
         Store.updateJob(id, {status:'running'});
-        if (job.kind === 'connect') { wait(900/S.speed, () => Store.updateJob(id, {status:'needs_you', output:{msg:'Bot opened the login page in its browser. Finish signing in from the Grok Bot app\'s computer view.'}}), id); return; }
         const dur = job.kind === 'ping' ? 900 : 1100 + Math.random()*900;
         wait(dur/S.speed, () => {
           if (S.failNext || (job.payload && job.payload.forceFail)) { S.failNext = false;
@@ -23,9 +22,7 @@
         }, id);
       }, id);
     },
-    /* the user finished a browser / OAuth login: the bot confirms */
-    confirm(id){ Store.updateJob(id, {status:'done', output:{confirmed:true}}); },
-    cancel(id){ clearTimeout(T[id]); delete T[id]; Store.updateJob(id, {status:'failed', error:'Cancelled'}); },
+    cancel(id, msg){ clearTimeout(T[id]); delete T[id]; Store.updateJob(id, {status:'failed', error:msg || 'Cancelled'}); },
     resume(){ Store.listJobs().filter(j => j.status === 'queued' || j.status === 'running').forEach(j => { Store.updateJob(j.id, {status:'queued'}); S.handle(Object.assign({}, j, {status:'queued'})); }); },
     produce(job){
       const p = job.payload || {}, I = p.intake || {};
@@ -53,7 +50,7 @@
         }
         case 'video': return {clips: Array.from({length:(p.frames||nShots)}, (_,i) => ({i, move:MOVES[i % MOVES.length], s:2.5}))};
         case 'final': return {seconds:I.dur, lufs:-14, true_peak:-1, aspect:I.aspect, labels:p.labels||[], file:'final_v'+(p.version||1)+'.mp4 (simulated)'};
-        case 'publish': return {queued:p.platforms||[], manual:p.manual||[], via:'official APIs (simulated)'};
+        case 'publish': return {results:(p.targets||[]).map(t => ({plat:t.plat, mode:t.mode, account:t.account})), via:'3x3 publish-broker · official APIs (simulated)'};
       }
       return {};
     }

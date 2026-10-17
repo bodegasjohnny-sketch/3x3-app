@@ -33,14 +33,24 @@ with sync_playwright() as p:
     shot('11-project-needs-you')
     # connections
     pg.click('a.tab[href="#/connections"]'); pg.wait_for_timeout(500); shot('12-connections-missing')
-    assert pg.locator('input[type=password], [data-f]').count() == 0, 'no secret inputs allowed'
-    for c in ['worker','imagine','elevenlabs']:
+    # worker onboarding (simulated): URL + routine key (fake only) -> signing secret shown once -> test job
+    pg.fill('#w-url', 'https://bot.example.test/routines/3x3/webhook'); pg.fill('#w-key', 'sk_' + 'a'*40); pg.click('[data-x="wsave"]'); pg.wait_for_timeout(250)
+    msg = pg.inner_text('#err-worker'); L('real-looking key rejected:', msg[:70]); assert 'rejected' in msg
+    pg.fill('#w-url', 'https://bot.example.test/routines/3x3/webhook'); pg.fill('#w-key', 'test_routine_1'); pg.click('[data-x="wsave"]'); pg.wait_for_timeout(300)
+    sec = pg.inner_text('#sigsec'); L('signing secret shown once:', sec[:14] + '…')
+    store = pg.evaluate('JSON.stringify(localStorage)'); assert sec not in store and 'test_routine_1' not in store and 'sk_aaaa' not in store, 'secrets must not be stored'
+    pg.locator('#conn-worker').scroll_into_view_if_needed(); shot('12b-connections-worker-secret')
+    pg.click('[data-x="wfailnext"]'); pg.check('[data-x="wsaved"]'); pg.click('[data-x="wtest"]'); pg.wait_for_timeout(1800)
+    assert "couldn't reach your bot" in pg.inner_text('#conn-worker'); L('worker failure message OK')
+    pg.click('[data-x="wtest"]'); pg.wait_for_timeout(1800)
+    assert 'Worker connected' in pg.inner_text('#conn-worker'); L('worker connected OK')
+    for c in ['imagine','elevenlabs']:
         pg.click(f'[data-x="simstatus"][data-c="{c}"][data-v="connected"]'); pg.wait_for_timeout(250)
-    pg.click('[data-x="connect"][data-c="tiktok"]'); pg.wait_for_timeout(1800)
-    pg.locator('#conn-tiktok').scroll_into_view_if_needed(); shot('13-connections-needs-you-login')
-    for c in ['youtube','facebook','instagram','tiktok']:
-        if c != 'tiktok': pg.click(f'[data-x="connect"][data-c="{c}"]'); pg.wait_for_timeout(1600)
-        pg.click(f'[data-x="confirm"][data-c="{c}"]'); pg.wait_for_timeout(300)
+    pg.click('[data-x="oauth"][data-c="tiktok"]'); pg.wait_for_timeout(300); shot('13-connections-oauth-popup')
+    pg.click('[data-x="oauthallow"]'); pg.wait_for_timeout(300)
+    for c in ['youtube','facebook','instagram']:
+        pg.click(f'[data-x="oauth"][data-c="{c}"]'); pg.wait_for_timeout(250); pg.click('[data-x="oauthallow"]'); pg.wait_for_timeout(250)
+    L('tiktok status:', pg.inner_text('#conn-tiktok .kv b')[:60])
     pg.evaluate('window.scrollTo(0,0); document.getElementById("page").scrollTop=0'); shot('14-connections-connected')
     # back to project: should auto-resume
     pg.go_back(); pg.wait_for_timeout(200)
@@ -67,14 +77,18 @@ with sync_playwright() as p:
     wait_for('publish', 'needs'); pg.click('[data-x="queue"]'); wait_for('publish', 'done')
     pg.evaluate('document.getElementById("page").scrollTop=0'); shot('19-project-complete', True)
     pg.click('a.tab[href="#/projects"]'); pg.wait_for_timeout(400); shot('20-projects')
-    pg.click('a.tab[href="#/onboarding"]'); pg.wait_for_timeout(400); pg.click('[data-x="testjob"]'); pg.wait_for_timeout(2500); shot('21-onboarding', True)
+    pg.click('a.tab[href="#/onboarding"]'); pg.wait_for_timeout(500); shot('21-onboarding', True)
+    # rotate signing secret (suspected leak) -> back to step 2
+    pg.click('a.tab[href="#/connections"]'); pg.wait_for_timeout(400); pg.click('[data-x="rotate"][data-leak="1"]'); pg.wait_for_timeout(400)
+    L('after rotate worker:', pg.evaluate("Store.getConnection('worker').status")); pg.locator('#conn-worker').scroll_into_view_if_needed(); shot('21b-connections-rotated')
+    pg.check('[data-x="wsaved"]'); pg.click('[data-x="wtest"]'); pg.wait_for_timeout(1800); L('re-connected:', pg.evaluate("Store.getConnection('worker').status"))
     # intake versioning
     pg.goto(BASE + '#/intake/9'); pg.wait_for_timeout(500); pg.click('[data-act="newversion"]'); pg.wait_for_timeout(400)
     L('version now', pg.evaluate('Intake.state.version'), 'locked versions', pg.evaluate('Intake.state.versions.length'))
     # alcohol niche warning
     ax = b.new_context(viewport={'width':1440,'height':900}); ap = ax.new_page()
     ap.goto(BASE + '#/intake/2'); ap.wait_for_timeout(400); ap.click('[data-set="niche"][data-val="history_culture"]'); ap.wait_for_timeout(200); ap.click('[data-set="sub"][data-val="liquor_history"]'); ap.wait_for_timeout(300)
-    L('alcohol warning shown:', 'no auto-publish to YouTube' in ap.inner_text('#content')); ap.screenshot(path=str(O/'24-alcohol-warning.png')); ax.close()
+    L('alcohol warning shown:', 'never auto-published' in ap.inner_text('#content')); ap.screenshot(path=str(O/'24-alcohol-warning.png')); ax.close()
     # forced rule bundles (fresh context)
     bx = b.new_context(viewport={'width':1440,'height':900}); bp = bx.new_page(); bp.on('pageerror', lambda e: errs.append('B PAGEERR ' + str(e)))
     bp.goto(BASE + '#/intake/2'); bp.wait_for_timeout(500)

@@ -69,10 +69,9 @@
   Store.subscribe(evt => {
     if (evt.type === 'job') { const j = evt.job;
       if (j.kind === 'stage') Pipeline.onJob(j);
-      if (j.kind === 'connect') { const id = j.payload.conn, c = Store.getConnection(id); if (c.jobId === j.id) {
-        if (j.status === 'done') { Store.saveConnection(id, {status:'connected', hint:'session confirmed by bot', jobId:null}); App.toast(`${M3.conn(id).n} connected`); }
-        else if (j.status === 'failed') Store.saveConnection(id, {status:c.prev || 'missing', jobId:null}); } }
-      if (j.kind === 'ping') { const ob = Store.getOnboarding(); if (ob.testJobId === j.id) { Store.setOnboarding({testJobStatus:j.status, testJob: ob.testJob || j.status === 'done'}); if (j.status === 'done') App.toast('Test job: your worker replied (simulated)'); } }
+      if (j.kind === 'ping') { const W = Pages._w; if (W.testJobId === j.id) {
+        if (j.status === 'done') { W.testing = false; W.fail = false; W.secret = null; Store.saveConnection('worker', {status:'connected', lastReply:j.updated_at}); Store.setOnboarding({testJob:true}); App.toast('Worker connected (simulated)'); }
+        else if (j.status === 'failed') { W.testing = false; W.fail = true; App.soon(); } } }
     }
     if (evt.type === 'connection') { const c = Store.getConnection(evt.id); if (c.status === 'connected') setTimeout(() => Pipeline.recheck(), 0);
       if (App.route === 'intake' && Intake.state.step === 9) Intake.rerender(); }
@@ -97,15 +96,29 @@
       case 'delproject': if (confirm('Delete this project from this browser?')) { Store.deleteProject(id); const d = Store.getDraft(); if (d && d.projectId === id) { Intake.state.projectId = null; Store.saveDraft(Object.assign(d, {projectId:null})); } location.hash = '#/projects'; } return;
       case 'failnext': Sim3x3.failNext = !Sim3x3.failNext; route(); return;
       case 'speed': Sim3x3.speed = Sim3x3.speed === 1 ? 3 : 1; route(); return;
-      case 'simstatus': { const v = a.dataset.v; const cur = Store.getConnection(c); if (cur.jobId && cur.status === 'pending') Sim3x3.cancel(cur.jobId);
-        Store.saveConnection(c, {status:v, jobId:null, hint:null}); App.toast(`${M3.conn(c).n}: ${({connected:'Connected',missing:'Missing',relogin:'Needs re-login'})[v]} (simulated)`, v === 'connected' ? '' : 'err'); return; }
-      case 'connect': { if (!M3.isOk(Store.getConnection('worker'))) { App.toast('Link your Grok Bot worker first: sign-ins run on your bot', 'err'); location.hash = '#/connections?focus=worker'; return; }
-        const prev = Store.getConnection(c).status || 'missing'; const j = Store.dispatchJob({kind:'connect', payload:{conn:c}});
-        Store.saveConnection(c, {status:'pending', jobId:j.id, prev: prev === 'pending' ? 'missing' : prev}); return; }
-      case 'confirm': { const cc = Store.getConnection(c); if (cc.jobId) Sim3x3.confirm(cc.jobId); return; }
-      case 'cancel': { const cc = Store.getConnection(c); if (cc.jobId) Sim3x3.cancel(cc.jobId); return; }
+      case 'simstatus': { const v = a.dataset.v;
+        Store.saveConnection(c, {status:v, jobId:null, hint:null}); App.toast(`${M3.conn(c).n}: ${({connected:'Set in bot',missing:'Missing'})[v]} (simulated)`, v === 'connected' ? '' : 'err'); return; }
+      case 'wsave': { const W = Pages._w, u = M3.checkUrl(document.getElementById('w-url').value), kk = M3.checkKey(document.getElementById('w-key').value);
+        if (!u.ok) { W.err = u.msg; route(); return; } if (!kk.ok) { W.err = kk.msg; route(); return; }
+        W.err = null; W.secret = M3.fakeSecret(); W.saved = false; W.fail = false;
+        Store.saveConnection('worker', {status:'pending', url:u.origin + '/…', last4:kk.last4, fp:M3.hash(W.secret).slice(0,8)}); return; }
+      case 'copysecret': { const t = Pages._w.secret; if (t && navigator.clipboard) navigator.clipboard.writeText(t).then(() => App.toast('Copied. Save it in your bot as THREEX3_SIGNING_SECRET'), () => App.toast('Select the text and copy it')); return; }
+      case 'wsaved': Pages._w.saved = a.checked; route(); return;
+      case 'wtest': { const W = Pages._w; if (!W.saved) return; W.testing = true; W.fail = false; const j = Store.dispatchJob({kind:'ping', payload:{purpose:'test', signed:'HMAC-SHA256 (server-side in production)'}}); W.testJobId = j.id; route(); return; }
+      case 'wfailnext': Sim3x3.failNext = !Sim3x3.failNext; route(); return;
+      case 'wremove': if (confirm('Remove this routine from 3x3? Running jobs stop, and you will paste a webhook URL and routine key again.')) { Pages._w = {}; Store.saveConnection('worker', {status:'missing', url:null, last4:null, fp:null}); } return;
+      case 'rotate': { const leak = !!a.dataset.leak;
+        if (!confirm((leak ? 'Rotate now (suspected leak)?\n\n' : 'Rotate signing secret?\n\n') + 'This stops all running jobs straight away. Paste the new secret into your bot to continue.')) return;
+        Store.listJobs().filter(j => (j.status === 'queued' || j.status === 'running') && !(j.payload && j.payload.stage === 'publish')).forEach(j => Sim3x3.cancel(j.id, 'Stopped: signing secret rotated. Paste the new secret into your bot, then Retry.'));
+        const W = Pages._w; W.secret = M3.fakeSecret(); W.saved = false; W.fail = false;
+        Store.saveConnection('worker', {status:'pending', fp:M3.hash(W.secret).slice(0,8)}); App.toast(leak ? 'Old secret revoked. Running jobs stopped.' : 'New signing secret created. Running jobs stopped.', 'err'); return; }
+      case 'oauth': Pages._oauth = {id:c}; route(); setTimeout(() => { const el = document.getElementById('oauth-acct'); el && el.focus(); }, 30); return;
+      case 'oauthcancel': Pages._oauth = null; route(); return;
+      case 'oauthallow': { const m = Pages._oauth; if (!m) return; const acct = (document.getElementById('oauth-acct').value || M3.conn(m.id).acct).trim(); Pages._oauth = null;
+        Store.saveConnection(m.id, {status:'connected', account:acct}); App.toast(`${M3.conn(m.id).n}: connected as ${acct} (simulated)`); return; }
+      case 'sdisconnect': { const cc = M3.conn(c); if (confirm(`3x3 will revoke its access at ${cc.provider === 'Google' && c === 'youtube' ? 'YouTube' : cc.n} and delete the stored login. Videos already posted stay on your account.`)) Store.saveConnection(c, {status:'missing', account:null}); return; }
+      case 'sexpire': Store.saveConnection(c, {status:'relogin'}); App.toast(`${M3.conn(c).n}: needs sign-in again (simulated)`, 'err'); return;
       case 'obcheck': Store.setOnboarding({[k]: a.checked}); return;
-      case 'testjob': { const j = Store.dispatchJob({kind:'ping', payload:{hello:'3x3'}}); Store.setOnboarding({testJobId:j.id, testJobStatus:'queued'}); return; }
     }
   });
   // stage anchor links shouldn't break the router

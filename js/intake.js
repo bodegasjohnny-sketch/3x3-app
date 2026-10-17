@@ -302,7 +302,7 @@ const VIEWS = {
   `<div class="lbl st">Format</div><div class="grid g3">${FORMATS.map(f=>`<button class="card st ${S.format===f.id?'sel':''}" data-set="format" data-val="${f.id}">${chk(S.format===f.id)}
     <div class="ico" style="--c:rgba(0,194,255,.12);--cc:var(--cyan)">${ic(f.i)}</div><h3>${f.n}</h3><p>${f.d}</p>
     <div class="beats">${f.beats.map((b,j)=>`<i class="${f.k.includes(j)?'k':''}" style="height:${b*12}%"></i>`).join('')}</div></button>`).join('')}</div>
-  <div class="lbl st">Duration ${(S.goal==='tiktok_rewards'||S.plat.tt)&&S.dur<=60?'<span class="badge warn" style="text-transform:none;letter-spacing:0">TikTok: Not Creator Rewards eligible (needs 61s+)</span>':''}<span class="r" style="color:var(--dim)">≈155 wpm narration · max 2.5s per shot</span></div>
+  <div class="lbl st">Duration ${(S.goal==='tiktok_rewards'||S.plat.tt)&&S.dur<=60?'<span class="badge warn" style="text-transform:none;letter-spacing:0">TikTok: Reach only, not eligible for Creator Rewards (needs 61s+)</span>':''}<span class="r" style="color:var(--dim)">≈155 wpm narration · max 2.5s per shot</span></div>
   <div class="st">${seg('dur',[30,45,60,90],S.dur)}</div>
   <div class="stats st">
     <div class="stat c"><b>≈${words(S.dur)}<small>words</small></b><span>Word budget at 155 wpm</span></div>
@@ -383,11 +383,11 @@ const VIEWS = {
     <div class="trow st" style="align-items:flex-start"><div class="tx"><h4>Cite a source for every fact <span class="badge mute">${ic('lock')}Locked on</span></h4><p>Each claim in the script carries a source URL that reviewers can check before approval.</p></div><div class="tog on locked" title="Always on"></div></div></div>
   <div class="lbl st">Publish to</div>
   <div class="grid g4">${PLATS.map(p=>`<button class="card plat st ${S.plat[p.id]?'sel':''}" data-act="plat" data-val="${p.id}" ${kidsForced()&&p.id!=='yt'?'disabled title="Kids projects publish to YouTube only"':''}><div class="ico" style="--c:${p.c}1f;--cc:${p.c}">${ic(p.i)}</div><h3>${p.n}</h3><span class="cbx">${ic('check')}</span></button>`).join('')}</div>
-  ${S.plat.tt?`<p class="st" style="margin-top:10px;font-size:12px">${S.dur<=60?`<span class="badge warn" style="margin-right:6px">TikTok: Not Creator Rewards eligible</span><span class="muted">${S.dur}s is fine for reach. Creator Rewards needs 61s or longer (pick 90s in Format).</span>`:`<span class="badge grn">${ic('check')}TikTok: Creator Rewards eligible (${S.dur}s)</span>`}</p>`:''}
+  ${S.plat.tt?`<p class="st" style="margin-top:10px;font-size:12px">${S.dur<=60?`<span class="badge warn" style="margin-right:6px">TikTok: Reach only, not eligible for Creator Rewards</span><span class="muted">${S.dur}s is fine for reach. Creator Rewards needs 61s or longer (pick 90s in Format).</span>`:`<span class="badge grn">${ic('check')}TikTok: Creator Rewards eligible (${S.dur}s)</span>`}</p>`:''}
   ${alcoholWarn()}
   ${step8Extra()}`; },
 9(){ const items=[['Goal',G(S.goal).n,'Primary monetization path',1],['Niche',`${N(S.niche).n} › ${subName()}`,REAL?`Compliance: ${(curSub()||{}).risk||'—'}`:'Example data',2],
-    ['Format',`${F().n} · ${S.dur}s`,`${S.aspect} · ≈${words(S.dur)} words · ${shots(S.dur)} shots${S.plat.tt&&S.dur<=60?' · TikTok: not Rewards eligible':''}`,3],['Budget',`$${S.cap}/day cap`,'Per user · enforced by your Grok Bot',9],['Style',ST().n,ST().mo,4],
+    ['Format',`${F().n} · ${S.dur}s`,`${S.aspect} · ≈${words(S.dur)} words · ${shots(S.dur)} shots${S.plat.tt&&S.dur<=60?' · TikTok: reach only':''}`,3],['Budget',`$${S.cap}/day cap`,'Per user · enforced by your Grok Bot',9],['Style',ST().n,ST().mo,4],
     ['Voice',S.vo?`${V().n} – ${V().r}`:'No voiceover',S.vo?`${S.lang} · ${S.pace.toFixed(2)}× · ${S.energy}`:'Captions + music only',5],['Brand',S.name,`${S.handle} · ${S.fh} / ${S.fb}`,6],
     ['Captions',`${capN()} · ${posN()}`,`Counter ${S.counter?'on':'off'}${affOn()?' · affiliate line on':''}`,7],['Audio',`${S.music} · SFX ${S.sfx}`,'−14 LUFS',7],
     ['Safety',`${S.banned.length} banned · sources on${claimsOn()?' · no-claims':''}`,`${S.kids?'Made for kids · ':''}${platList().join(', ')}`,8],
@@ -434,7 +434,7 @@ function rulesJSON(){
 
 /* ---------- 3x3 additions: warnings, AI disclosure, claims, cost, rules ---------- */
 function monoWarnings(){ const w=[];
-  if(S.goal==='tiktok_rewards'||S.plat.tt) w.push(`TikTok Creator Rewards only pays on videos <b>61s or longer</b>. 30–60s is fine for reach, but it gets labelled <b>Not Creator Rewards eligible</b>${S.dur<=60?` (yours is ${S.dur}s; the TikTok preset uses 90s)`:''}.`);
+  if(S.goal==='tiktok_rewards'||S.plat.tt) w.push(`TikTok Creator Rewards only pays on videos <b>61s or longer</b>. 30–60s is fine for reach, but it gets marked <b>Reach only: not eligible for Creator Rewards</b>${S.dur<=60?` (yours is ${S.dur}s; the TikTok preset uses 90s)`:''}.`);
   w.push('Mass-produced, templated or repetitive videos get <b>demonetized</b> (YouTube "inauthentic content", Meta "unoriginal content"). 3x3 varies topic, script and visuals every time. Don\'t post near-duplicates.');
   if(S.goal==='yt_monetization') w.push('YouTube Partner Program needs 1,000 subscribers plus 10M Shorts views in 90 days, or 4,000 long-form watch hours in 12 months.');
   if(S.goal==='fb_monetization') w.push('Facebook only pays for original content. Reposted or lightly edited clips earn nothing.');
@@ -468,7 +468,7 @@ function contrastBox(){ const P=S.pal, rows=[['Text on background',P.text,P.bg],
   return `<div class="lbl">Contrast check <span class="r" style="color:var(--dim)">WCAG AA needs 4.5:1</span></div><div class="contrast">${rows.map(([n,f,b])=>{const r=cr(f,b);return `<div class="crow ${r>=4.5?'pass':'fail'}"><span class="sw2" style="color:${f};background:${b}">Aa</span><span>${n}</span><b>${r.toFixed(2)}:1 ${r>=4.5?'✓':'✗ too low'}</b></div>`}).join('')}
    ${wt<4.5?`<div class="crow fail"><span class="sw2" style="color:#fff;background:${P.hl}">Aa</span><span>White text on highlight is blocked</span><b>${wt.toFixed(2)}:1</b></div>`:''}</div>`; }
 function bundleBanner(){ const bl=bundleList(); if(!bl.length) return ''; return `<div class="infobox st" style="background:rgba(139,92,246,.07);border-color:rgba(139,92,246,.35)">${ic('lock')}<div><b>Forced rule bundle${bl.length>1?'s':''}: ${esc(bl.map(b=>b.name).join(' · '))}</b><br>These settings are locked for ${esc(subName())}: ${[forcedDisc()?(forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer':'disclaimer'):'', claimsOn()?'no-claims rules':'', kidsForced()?'made for kids + YouTube only':'', forcedWords().length?forcedWords().length+' banned words':''].filter(Boolean).join(' · ')}.${blockedGoal()?` <b style="color:#ffb1b5">Your goal (${esc(G(S.goal).n)}) is blocked for this niche.</b>`:''}</div></div>`; }
-function alcoholWarn(){ if(!M3.isAlcohol(S)) return ''; return `<div class="errbanner st" style="margin-top:12px;background:rgba(255,176,32,.08);border-color:rgba(255,176,32,.5)">${ic('warn')}<div><b>Alcohol niche: no auto-publish to YouTube.</b> ${esc(M3.ALCOHOL_YT)}${S.plat.yt?'':' (YouTube isn\'t selected right now.)'}</div></div>`; }
+function alcoholWarn(){ if(!M3.isAlcohol(S)) return ''; return `<div class="errbanner st" style="margin-top:12px;background:rgba(255,176,32,.08);border-color:rgba(255,176,32,.5)">${ic('warn')}<div><b>Alcohol niche: never auto-published.</b> ${esc(M3.ALCOHOL_YT)}${S.plat.yt?'':' (YouTube isn\'t selected right now.)'}</div></div>`; }
 function canLock(){ return S.aiAck&&S.compAck&&!blockedGoal(); }
 function versionsList(){ if(!S.versions||!S.versions.length) return ''; return `<div class="verlist st"><span class="muted" style="align-self:center">Locked versions (read-only):</span>${S.versions.slice().sort((a,b)=>a.v-b.v).map(v=>`<button class="badge ${v.v===S.version&&S.locked?'grn':'mute'}" data-act="viewver" data-val="${v.v}" title="Open read-only JSON">${ic('lock')}v${v.v} · ${new Date(v.locked_at).toLocaleDateString([], {month:'short',day:'numeric'})} · ${v.intake_hash.slice(0,8)}</button>`).join('')}</div>`; }
 function curTopic(){ return S.topic===-1?(S.ownTopic||'Your own topic'):(topics()[S.topic]||topics()[0]).t; }
