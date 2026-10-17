@@ -22,7 +22,9 @@
     ready(p, k){ return P.prevKeys(k).every(x => ['done','skipped'].includes(P.eff(p, x))); },
     missing(p, k){ const conns = Store.getConnections(); return M3.stageNeeds(k, p.intake).filter(id => !M3.isOk(conns[id])); },
     labels(p){ const r = p.rules; const L = Object.values((r.ai_disclosure||{}).platforms||{}).filter((v,i,a)=>a.indexOf(v)===i).map(x => 'AI label: ' + x);
-      if (r.ai_disclosure && r.ai_disclosure.on_screen_tag) L.push('On-screen "AI-generated" tag'); if (r.affiliate_disclosure) L.push('Affiliate line: ' + r.affiliate_disclosure.text); return L; },
+      if (r.ai_disclosure && r.ai_disclosure.on_screen_tag) L.push('On-screen "AI-generated" tag'); if (r.affiliate_disclosure) L.push('Affiliate line: ' + r.affiliate_disclosure.text); if (r.ai_disclosure) L.push('AI tools line in description');
+      const d = (r.safety || {}).disclaimer; if (d && d.text) L.unshift('Disclaimer (first frame + description): ' + d.text);   // the locked disclaimer is burned in
+      return L; },
     start(p, k, opts={}){
       p = Store.getProject(p.id); const st = p.stages[k]; const sd = M3.stage(k);
       /* one active job per step: ignore repeat clicks while a job is queued or running (never charge twice) */
@@ -40,6 +42,7 @@
       st.version = (st.version || 0) + 1;
       const payload = {stage:k, intake:p.intake, topic:p.topic, intakeHash:p.rules.intake_hash, version:st.version, labels:P.labels(p)};
       if (opts.swap != null) { payload.swap = opts.swap; payload.prev = st.output.frames; }
+      if (k === 'voice') payload.script = ((p.stages.script.output || {}).beats || []).map(b => ({b:b.b, line:b.line}));
       if (k === 'video') payload.frames = (p.stages.stills.output || {frames:[]}).frames.length;
       if (k === 'publish') payload.targets = P.publishTargets(p);
       const job = Store.dispatchJob({kind:'stage', project_id:p.id, stage:k, payload});
@@ -53,6 +56,9 @@
         if (alc) mode = M3.ALCOHOL_MODES[x];
         else if (x === 'tt') mode = P.ttDirect(p) && p.stages.publish.ttPrivacy ? 'direct post (audited) · privacy ' + p.stages.publish.ttPrivacy : 'uploaded to your TikTok inbox (draft): you post it in the app';
         return {plat:x, mode, account:acct, kids: kids && x === 'yt', reach_only: x === 'tt' && I.dur <= 60}; }); },
+    /* connected channel/Page vs this project's brand (simulated name check; production compares the channel/Page id saved with the brand) */
+    brandMismatch(p){ const conns = Store.getConnections(), I = p.intake;
+      return P.publishTargets(p).filter(t => { const c = M3.CONNS.find(cc => cc.plat === t.plat); return M3.isOk(conns[c.id]) && !M3.brandMatches(t.account, I.name, I.handle); }).map(t => ({plat:t.plat, account:t.account, brand:I.name})); },
     /* made-for-kids comes from the compiled, locked rules (rules.safety.made_for_kids), never the raw intake flag */
     kidsRule(p){ return !!(p.rules && p.rules.safety && p.rules.safety.made_for_kids === true); },
     ttDirect(p){ const I = p.intake; return !!Store.getFlags().tiktok_direct_post_audited && !M3.isAlcohol(I) && !!I.plat.tt && !P.kidsRule(p); },
@@ -76,6 +82,8 @@
     },
     approve(id, k){ const p = Store.getProject(id), st = p.stages[k];
       if (P.eff(p, k) !== 'awaiting' || !P.ready(p, k)) return;
+      if (k === 'script') { const hits = M3.scriptBanned(st.output.beats, p.rules); if (hits.length) { P.log(p, 'Script not approved: it uses banned words (' + hits.join(', ') + '). Edit the lines or regenerate.'); return; }
+        const ph = M3.scriptPlaceholders(st.output.beats); if (ph.length) { P.log(p, 'Script not approved: ' + ph.length + ' line' + (ph.length > 1 ? 's are' : ' is') + ' still placeholder template text (' + ph.map(b => b.b).join(', ') + '). Write your own lines and save, then approve.'); return; } }
       st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now()};
       P.log(p, `${M3.stage(k).n} approved · lock ${M3.hash([st.inputHash, st.output.hash]).slice(0,8)}`);
       const n = P.nextKey(p, k); if (n && p.stages[n].status === 'idle') P.start(p, n);
@@ -95,18 +103,33 @@
     ageDone(p){ const st = p.stages.publish, g = st.ageGate;
       if (g.plats.every(x => P.ageResolved(g, x))) { st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), age_gate:g.confirmed}; P.log(p, 'Every alcohol post answered'); }
       else Store.saveProject(p); },
+    /* Script edits before approval (the architecture lets the user edit; the diff is logged). Only while awaiting approval. */
+    editScript(id, lines){ const p = Store.getProject(id), st = p.stages.script; if (P.eff(p, 'script') !== 'awaiting' || !st.output) return [];
+      const o = st.output, changed = [];
+      o.beats.forEach((b, i) => { const v = typeof lines[i] === 'string' ? lines[i].replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 400) : null; if (v && v !== b.line) { changed.push({beat:b.b, from:b.line, to:v}); b.line = v; b.tpl = false; } });
+      if (!changed.length) return changed;
+      o.edits = (o.edits || []).concat(changed.map(c => Object.assign({at:now()}, c))); const { hash, ...rest } = o; o.hash = M3.hash(rest);
+      P.log(p, `Script edited by you before approval: ${changed.map(c => c.beat).join(', ')} changed (output ${o.hash.slice(0,8)})`); return changed; },
+    /* Voice gate: redo one line (re-stitched and re-timed in production); new output hash, so approval is per take */
+    redoLine(id, i){ const p = Store.getProject(id), st = p.stages.voice; if (P.eff(p, 'voice') !== 'awaiting' || !st.output || !st.output.lines || !st.output.lines[i]) return;
+      const ln = st.output.lines[i]; ln.v = (ln.v || 1) + 1; const { hash, ...rest } = st.output; st.output.hash = M3.hash(rest);
+      P.log(p, `Voiceover: line ${ln.line_id} (${ln.beat}) re-recorded, take v${ln.v} (simulated)`); },
     regenerate(id, k){ const p = Store.getProject(id); P.log(p, `${M3.stage(k).n}: regenerate requested`); P.start(p, k); },
     swap(id, i){ const p = Store.getProject(id); if (!p.stages.stills.output) return; P.start(p, 'stills', {swap:i}); },
     retry(id, k, force){ const p = Store.getProject(id); P.start(p, k, {force:!!force, queue: k === 'publish' && !p.stages.publish.choice}); },
     queue(id, force, ttPrivacy){ const p = Store.getProject(id); if (ttPrivacy) { p.stages.publish.ttPrivacy = ttPrivacy; Store.saveProject(p); } P.start(Store.getProject(id), 'publish', {queue:true, force:!!force}); },
-    download(id){ const p = Store.getProject(id), st = p.stages.publish;
-      const manifest = {app:'3x3', note:'TEST BUILD: simulated. A real run delivers the final MP4; this file is the project manifest.', project:{id:p.id, name:p.name, topic:p.topic},
+    /* Download: mark Publish done FIRST (non-alcohol), then snapshot the manifest, so the file matches what the page shows */
+    download(id){ const p = Store.getProject(id), st = p.stages.publish, alc = M3.isAlcohol(p.intake);
+      if (alc) st.downloadedAt = now();
+      else { st.output = {downloaded:true, at:now()}; st.output.hash = M3.hash(st.output); st.status = 'done'; st.inputHash = P.inputHash(p, 'publish'); st.choice = false;
+        st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), auto:true}; }
+      const manifest = {app:'3x3', note:'TEST BUILD: simulated. A real run delivers the final MP4; this file is the project manifest.', manifest_at:now(), project:{id:p.id, name:p.name, topic:p.topic},
+        publish_note: alc ? 'Alcohol project: Publish stays "needs" until you answer each platform; this manifest was taken before those answers.' : 'Publish marked done by this download.',
         rules:p.rules, stages:Object.fromEntries(Object.entries(p.stages).map(([k,s]) => [k, {status:s.status, output_hash:s.output && s.output.hash, approval:s.approval || null}]))};
+      P.lastManifest = manifest;
       const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(manifest, null, 2)], {type:'application/json'}));
       a.download = `3x3-${p.id}-manifest.json`; document.body.appendChild(a); a.click(); a.remove();
-      if (M3.isAlcohol(p.intake)) { st.downloadedAt = now(); P.log(p, 'Downloaded (simulated: manifest JSON). Publish stays not done: alcohol posts need your per-platform age answers'); return; }
-      st.output = {downloaded:true, at:now()}; st.output.hash = M3.hash(st.output); st.status = 'done'; st.inputHash = P.inputHash(p, 'publish'); st.choice = false;
-      st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), auto:true}; P.log(p, 'Downloaded (simulated: manifest JSON instead of MP4)'); },
+      P.log(p, alc ? 'Downloaded (simulated: manifest JSON). Publish stays not done: alcohol posts need your per-platform age answers' : 'Downloaded (simulated: manifest JSON instead of MP4)'); },
     reset(id){ const p = Store.getProject(id); M3.STAGES.forEach(s => p.stages[s.k] = {status: p.stages[s.k].status === 'skipped' ? 'skipped' : 'idle', version:0}); p.log = []; P.log(p, 'Simulation reset'); P.start(p, 'rules'); },
     /* a connection just became available: resume any stage that was waiting only on connections */
     recheck(){ Store.listProjects().forEach(p => KEYS().forEach(k => { const st = p.stages[k];

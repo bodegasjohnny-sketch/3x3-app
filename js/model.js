@@ -13,13 +13,13 @@ M.CONNS = [
   {id:'elevenlabs', group:'bot', n:'ELEVENLABS_API_KEY (in your bot)', short:'ElevenLabs key in your bot', kind:'botsecret', secret:'ELEVENLABS_API_KEY', icon:'mic', c:'#F5F7FA',
    what:'Your bot uses your ElevenLabs key to make the voiceover from the approved script.',
    how:'In ElevenLabs open Profile › API keys and create a key. In Grok Bot, add it as a secret named ELEVENLABS_API_KEY. Never paste it into 3x3.'},
-  {id:'youtube', group:'social', n:'YouTube', btn:'Connect YouTube', kind:'oauth', icon:'yt', c:'#EA3943', plat:'yt', provider:'Google', acct:'Healthy Bites PH',
+  {id:'youtube', group:'social', n:'YouTube', btn:'Connect YouTube', kind:'oauth', icon:'yt', c:'#EA3943', plat:'yt', provider:'Google', acct:'Your YouTube channel',
    perms:'Upload videos, and read your channel name.', api:'YouTube Data API v3 (videos.insert)'},
-  {id:'facebook', group:'social', n:'Facebook Page', btn:'Connect Facebook Page', kind:'oauth', icon:'fb', c:'#00C2FF', plat:'fb', provider:'Facebook', acct:'Healthy Bites PH (Page)',
+  {id:'facebook', group:'social', n:'Facebook Page', btn:'Connect Facebook Page', kind:'oauth', icon:'fb', c:'#00C2FF', plat:'fb', provider:'Facebook', acct:'Your Facebook Page',
    perms:'Choose a Page and publish Reels to it.', api:'Meta Graph API (Page Reels publishing)'},
-  {id:'instagram', group:'social', n:'Instagram', btn:'Connect Instagram', kind:'oauth', icon:'ig', c:'#FF6B9A', plat:'ig', optional:true, provider:'Instagram', acct:'@healthybitesph',
+  {id:'instagram', group:'social', n:'Instagram', btn:'Connect Instagram', kind:'oauth', icon:'ig', c:'#FF6B9A', plat:'ig', optional:true, provider:'Instagram', acct:'@your_instagram',
    perms:'Publish Reels to your professional account.', api:'Instagram Graph API (Reels content publishing)'},
-  {id:'tiktok', group:'social', n:'TikTok', btn:'Connect TikTok', kind:'oauth', icon:'tt', c:'#F5F7FA', plat:'tt', provider:'TikTok', acct:'@healthybitesph',
+  {id:'tiktok', group:'social', n:'TikTok', btn:'Connect TikTok', kind:'oauth', icon:'tt', c:'#F5F7FA', plat:'tt', provider:'TikTok', acct:'@your_tiktok',
    perms:'Read your basic profile and post videos.', api:'TikTok Content Posting API'},
 ];
 M.SOCIAL_STATUS = {connected:'Connected as', relogin:'Needs sign-in again', missing:'Disconnected'};
@@ -32,14 +32,33 @@ M.conn = id => M.CONNS.find(c => c.id === id);
 /* ---------- pipeline ---------- */
 M.STAGES = [
   {k:'rules', s:'Rules',   n:'Rules',              icon:'bolt',   approval:false, needs:['worker'],            d:'Compiles the locked intake into the global rule set every step must follow.'},
-  {k:'script', s:'Script',  n:'Script',             icon:'edit',   approval:true,  needs:['worker'],            d:'Drafts the script beat by beat, with a source for every fact. Approval 1.'},
-  {k:'voice', s:'Voiceover',   n:'Voiceover',          icon:'mic',    approval:false, needs:['worker','elevenlabs'], d:'ElevenLabs narration of the approved script, using your voice, pace and pronunciations.'},
-  {k:'stills', s:'Stills',  n:'Stills / storyboard',icon:'grid',   approval:true,  needs:['worker','imagine'],  d:'One Grok Imagine still per shot in your style. Swap any single still. Approval 2.'},
-  {k:'video', s:'Video',   n:'Video from stills',  icon:'film',   approval:true,  needs:['worker','imagine'],  d:'Each approved still becomes a short clip with one camera move. Approval 3.'},
-  {k:'final', s:'Final stitch',   n:'Final stitch',       icon:'cc',     approval:true,  needs:['worker'],            d:'Clips, voice, captions, music and SFX mixed to −14 LUFS, with AI and affiliate labels burned in. Approval 4.'},
+  {k:'script', s:'Script',  n:'Script',             icon:'edit',   approval:true,  needs:['worker'],            d:'Drafts the script beat by beat, with a source for every fact. You can edit the lines before you approve; edits are logged. Approval 1.'},
+  {k:'voice', s:'Voiceover',   n:'Voiceover',          icon:'mic',    approval:true, needs:['worker','elevenlabs'], d:'ElevenLabs narration of the approved script (vo.mp3 + timings.json), using your voice, pace and pronunciations. Voice gate: play it, redo a line or the whole take, then approve. Approval 2.'},
+  {k:'stills', s:'Stills',  n:'Stills / storyboard',icon:'grid',   approval:true,  needs:['worker','imagine'],  d:'One Grok Imagine still per shot in your style. Storyboard gate: swap any single still, then approve. Approval 3.'},
+  {k:'video', s:'Video',   n:'Video from stills',  icon:'film',   approval:false, needs:['worker','imagine'],  d:'Each approved still becomes a short clip with one camera move. No separate gate: you preview the clips inside the Master gate (MASTER_PACK §3.6).'},
+  {k:'final', s:'Final',   n:'Final stitch (Master gate)',       icon:'cc',     approval:true,  needs:['worker'],            d:'Clips, voice, captions, music and SFX mixed to a −14 LUFS target, with the locked disclaimer, AI labels and affiliate line burned in. Master gate: preview the clips and the render, then approve. Approval 4.'},
   {k:'publish', s:'Publish', n:'Download / publish', icon:'up',     approval:false, needs:[],                    d:'Download the MP4, or approve publishing. 3x3\'s server posts it through the official platform APIs. Your bot never touches your social accounts.'},
 ];
 M.stage = k => M.STAGES.find(s => s.k === k);
+/* beat skeleton per format: shared by the intake (step 3 numbers) and the simulated script */
+M.BEATS = {list:['Hook','#5','#4','#3','#2','#1','CTA'], story:['Hook','Setup','Turn','Rise','Twist','Payoff','CTA'], reveal:['Tease','Question','Clue 1','Clue 2','Build','Reveal','CTA']};
+M.BEAT_LABEL = {list:'Hook + 5 items + CTA', story:'Hook, 5 story beats, CTA', reveal:'Tease, 5 build beats, CTA'};
+/* Publish note: only the parts that apply to this project (alcohol / kids) */
+M.publishNote = (p, kids) => { const I = (p && p.intake) || {}, t = ['Nothing is posted until you approve it, and you can always keep a post private or not post it.'];
+  if (M.isAlcohol(I)) t.push('Alcohol-history videos are never auto-published and never made public by 3x3: you answer for each post on each platform (YouTube is uploaded private and 3x3 leaves it private, TikTok goes to your inbox drafts, Facebook and Instagram are held until you answer).');
+  if (kids) t.push('Kids videos go to YouTube only, marked Made for Kids.');
+  return t.join(' '); };
+/* Banned-word lint for script text. The locked disclaimer is exempt, so a banned 'financial advice' never trips on the forced 'Not financial advice.' */
+M.lintBanned = (text, banned, disclaimer) => { let t = String(text || '');
+  const d = String(disclaimer || '').trim();
+  if (d) [d].concat(d.split(/(?<=[.!?])\s+/).map(x => x.replace(/[.!?]+$/, '')).filter(x => x.length >= 8)).forEach(x => { t = t.replace(new RegExp(x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' '); });   // whole disclaimer, and each of its sentences
+  return M.bannedHits(t, banned || []); };
+/* placeholder lines the simulator wrote and you haven't edited yet (the CTA is your own text) */
+M.scriptPlaceholders = beats => (beats || []).filter(b => b.tpl === true);
+/* does the connected channel/Page look like this project's brand? (simulated check; production compares the channel/Page id saved with the brand) */
+M.brandKey = v => String(v || '').toLowerCase().replace(/\(page\)/g, '').replace(/[^a-z0-9]+/g, '');
+M.brandMatches = (account, brand, handle) => { const a = M.brandKey(account); if (!a) return false; return [brand, handle].map(M.brandKey).filter(x => x.length >= 3).some(b => a.includes(b) || b.includes(a)); };
+M.scriptBanned = (beats, rules) => { const sf = (rules && rules.safety) || {}; return M.lintBanned((beats || []).map(b => b.line).join('\n'), sf.banned_words, sf.disclaimer && sf.disclaimer.text); };
 M.STATUS = {
   idle:    ['Not started','mute'], running:['Running','cyan'], needs:['Needs you','warn'],
   awaiting:['Awaiting approval','vio'], done:['Done','grn'], failed:['Failed','red'],
@@ -81,7 +100,7 @@ M.warnings = (I, conns) => {
     const c = M.conn(req.id);
     const verb = st.status === 'relogin' ? 'needs a re-login for' : st.status === 'pending' ? 'is waiting on you for' : 'needs';
     const label = st.status === 'relogin' || st.status === 'pending' ? c.n : M.connLabelMissing(req.id, st);
-    const names = req.stages.map(s => M.stage(s).n.split(' /')[0]);
+    const names = req.stages.map(s => M.stage(s).s);   // short names: 'Publish' (not 'Download') needs the sign-ins
     out.push({id:req.id, status:st.status || 'missing', stages:req.stages,
       text: (req.id === 'worker' ? 'Every AI step' : `${names.join(' & ')} step${names.length>1?'s':''}`) + ` ${verb} ${label}`,
       why: req.why.join('; ')});
@@ -205,7 +224,7 @@ M.needsNoClaims = I => M.CLAIM_NICHES.includes(I.niche) || M.CLAIM_SUBS.includes
 M.BANNED_PRESET = {
   health_nutrition:['cure','treat','prevent','heal','detox','miracle','guaranteed'],
   human_body:['cure','treat','prevent','heal','miracle','guaranteed'],
-  finance:['guaranteed returns','risk-free','get rich quick','financial advice','to the moon','double your money'],
+  finance:['guaranteed returns','risk-free','get rich quick','to the moon','double your money'],   // 'financial advice' removed: not in the spec's finance list (it is a compliance area, and the forced NFA disclaimer contains it)
   local_business:['guaranteed','best in town','#1 rated'],
 };
 M.ALCOHOL_SUBS = ['liquor_history'];

@@ -51,6 +51,11 @@
     else { $('#page').scrollTop = prevScroll; window.scrollTo(0, prevWin); }
   }
   App.render = route;
+  /* Browser speech sample (simulator only; the real build plays ElevenLabs audio). Returns the engine used, or null if none. */
+  App.canSpeak = () => !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
+  App.lastSample = null;
+  App.say = (text, rate) => { const t = String(text || '').slice(0, 300); App.lastSample = {text:t, at:new Date().toISOString(), engine:App.canSpeak() ? 'speechSynthesis' : null};
+    if (!App.canSpeak()) return null; try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.rate = Math.max(0.7, Math.min(1.3, +rate || 1)); u.lang = 'en-US'; speechSynthesis.speak(u); } catch (e) { return null; } return 'speechSynthesis'; };
   /* keep keyboard focus on the same control across re-renders (innerHTML swaps) */
   App.focusKey = () => { const el = document.activeElement; if (!el || el === document.body) return null;
     if (el.id) return '#' + CSS.escape(el.id);
@@ -111,6 +116,9 @@
       case 'ttaudit': Store.setFlag('tiktok_direct_post_audited', !Store.getFlags().tiktok_direct_post_audited); route(); return;
       case 'resetspend': Store.resetSpend(); App.toast('Simulated: new day, spend reset to $0'); Pipeline.retry(id, k); return;
       case 'download': Pipeline.download(id); return;
+      case 'savescript': { const ls = [...document.querySelectorAll('#stage-script textarea[data-beat]')].sort((x, y) => x.dataset.beat - y.dataset.beat).map(t => t.value); const ch = Pipeline.editScript(id, ls); App.toast(ch.length ? `Saved: ${ch.length} line${ch.length > 1 ? 's' : ''} edited (logged)` : 'No changes to save'); return; }
+      case 'redoline': Pipeline.redoLine(id, +a.dataset.i); return;
+      case 'sayline': { const p = Store.getProject(id), l = ((p.stages.voice.output || {}).lines || [])[+a.dataset.i]; if (l) { const r = App.say(l.text, p.intake.pace); if (!r) App.toast('Audio playback isn\'t available in this browser (simulator)', 'err'); } return; }
       case 'reset': Pipeline.reset(id); return;
       case 'delproject': if (confirm('Delete this project from this browser?')) { Store.deleteProject(id); const d = Store.getDraft(); if (d && d.projectId === id) { Intake.state.projectId = null; Store.saveDraft(Object.assign(d, {projectId:null})); } location.hash = '#/projects'; } return;
       case 'failnext': Sim3x3.failNext = !Sim3x3.failNext; route(); return;

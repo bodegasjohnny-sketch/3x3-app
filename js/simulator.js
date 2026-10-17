@@ -29,27 +29,31 @@
       const nShots = Math.max(6, Math.round((I.dur||45)/2.5)), words = Math.round((I.dur||45)*155/60);
       const seed = () => Math.floor(Math.random()*1e6);
       switch(p.stage){
-        case 'rules': return {rule_set_version:1, intake_hash:p.intakeHash, gates:['script','stills','video','final'], checks:12};
+        case 'rules': return {rule_set_version:1, intake_hash:p.intakeHash, gates:I.vo === false ? ['script','stills','final'] : ['script','voice','stills','final'], checks:12};
         case 'script': {
-          const topic = p.topic || 'Your topic';
-          let beats;
-          if (I.format === 'list') beats = ['Hook', '#5', '#4', '#3', '#2', '#1', 'CTA'];
-          else if (I.format === 'reveal') beats = ['Tease', 'Question', 'Clue 1', 'Clue 2', 'Build', 'Reveal', 'CTA'];
-          else beats = ['Hook', 'Setup', 'Turn', 'Rise', 'Twist', 'Payoff', 'CTA'];
-          const per = Math.round(words / beats.length);
-          return {topic, words, draft:(p.version||1), beats: beats.map((b,i) => ({b,
-            line: i === 0 ? `"${topic}": opening hook (~${per} words) that lands in the first 1.5 seconds.`
-                : i === beats.length-1 ? (I.cta || 'Follow for more') + (I.goal === 'affiliate' ? ' · link in bio (#ad)' : '')
-                : `${b}: one verifiable point about ${topic.toLowerCase()} (~${per} words).`,
-            src: (i === 0 || i === beats.length-1) ? null : 'source URL attached by worker'}))};
+          /* simulated draft: each draft (version) uses a different hook and line pattern, so Regenerate really changes the text */
+          const topic = p.topic || 'Your topic', v = (p.version || 1), beats = M3.BEATS[I.format] || M3.BEATS.story;
+          const per = Math.round(words / beats.length), t = topic.toLowerCase();
+          const HOOK = [`"${topic}": the version most people never hear.`, `Stop scrolling: ${t}, in under a minute.`, `Most people get this wrong: ${t}.`, `${topic}? Here's what actually holds up.`, `You've been told the opposite. ${topic}, explained.`];
+          const ITEM = [b => `${b}: one verifiable point about ${t}, with a plain-words example.`, b => `${b}: a specific, sourced fact on ${t} (one idea, one number at most).`, b => `${b}: a quick, checkable tip about ${t}, source shown on screen.`, b => `${b}: the common myth about ${t}, and what the source actually says.`, b => `${b}: one practical step for ${t} you can try today.`];
+          const h = HOOK[(v - 1) % HOOK.length], it = ITEM[(v - 1) % ITEM.length];
+          return {topic, words, draft:v, variant:((v - 1) % HOOK.length) + 1, per_beat:per, beats: beats.map((b,i) => ({b,
+            line: i === 0 ? h : i === beats.length-1 ? (I.cta || 'Follow for more') + (I.goal === 'affiliate' ? ' · link in bio (#ad)' : '') : it(b),
+            src: (i === 0 || i === beats.length-1) ? null : 'source URL attached by worker',
+            tpl: i !== beats.length-1}))};   // placeholder text: you must rewrite hook + items before Approval 1 (CTA is yours already)
         }
-        case 'voice': return {voice:I.voice, seconds:I.dur, chars:Math.round(words*5.8), model:'eleven_multilingual_v2 (example)'};
+        case 'voice': {
+          /* voice take built from the approved script: one line per beat, timed at ~155 wpm x pace (timings.json is the master clock) */
+          const sc = p.script || [], lines = sc.map(b => String(b.line || '')), pace = +I.pace || 1; let t0 = 0.08;
+          const L = lines.map((x, i) => { const w = x.split(/\s+/).filter(Boolean).length, d = Math.max(0.6, w / (155 * pace) * 60); const o = {line_id:'L' + (i + 1), beat:sc[i].b, text:x, start:+t0.toFixed(2), end:+(t0 + d).toFixed(2), v:1}; t0 += d + 0.12; return o; });
+          return {voice:I.voice, take:(p.version || 1), seconds:+t0.toFixed(1), chars:lines.join(' ').length, lines:L, files:['vo.mp3 (simulated)', 'timings.json (simulated)'], model:'eleven_multilingual_v2 (example)'};
+        }
         case 'stills': {
           if (p.swap != null && p.prev) { const f = p.prev.map(x => Object.assign({}, x)); f[p.swap] = {i:p.swap, seed:seed(), v:(p.prev[p.swap].v||1)+1}; return {frames:f, swapped:p.swap}; }
           return {frames: Array.from({length:nShots}, (_,i) => ({i, seed:seed(), v:1}))};
         }
         case 'video': return {clips: Array.from({length:(p.frames||nShots)}, (_,i) => ({i, move:MOVES[i % MOVES.length], s:2.5}))};
-        case 'final': return {seconds:I.dur, lufs:-14, true_peak:-1, aspect:I.aspect, labels:p.labels||[], file:'final_v'+(p.version||1)+'.mp4 (simulated)'};
+        case 'final': return {measured:false, target_seconds:I.dur, target_lufs:-14, target_true_peak:-1, aspect:I.aspect, labels:p.labels||[], file:'final_v'+(p.version||1)+'.mp4 (simulated)'};
         case 'publish': return {results:(p.targets||[]).map(t => ({plat:t.plat, mode:t.mode, account:t.account})), via:'3x3 publish-broker · official APIs (simulated)'};
       }
       return {};

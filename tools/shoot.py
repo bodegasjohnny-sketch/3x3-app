@@ -60,8 +60,10 @@ with sync_playwright() as p:
     def wait_for(k, s, t=15000):
         pg.wait_for_function(f"(()=>{{const p=Store.getProject('{pid}');return Pipeline.eff(p,'{k}')==='{s}'}})()", timeout=t)
     wait_for('script', 'awaiting'); shot('15-project-script-approval', True)
-    for k in ['script','stills','video','final']:
-        wait_for(k, 'awaiting'); pg.click(f'[data-x="approve"][data-k="{k}"]'); pg.wait_for_timeout(300); L('approved', k)
+    for k in ['script','voice','stills','final']:
+        wait_for(k, 'awaiting')
+        if k == 'script': pg.evaluate("(pid=>Pipeline.editScript(pid, Store.getProject(pid).stages.script.output.beats.map((b,i)=>b.tpl?('My own line '+(i+1)+': a plain, checkable point.'):b.line)))('"+pid+"')"); pg.wait_for_timeout(300)
+        pg.click(f'[data-x="approve"][data-k="{k}"]'); pg.wait_for_timeout(300); L('approved', k)
         if k == 'stills': pass
     wait_for('publish', 'needs'); shot('16-project-publish-choice', True)
     # hash-lock demo: swap a still after everything approved
@@ -69,7 +71,7 @@ with sync_playwright() as p:
     L('after swap:', st('stills'), st('video'), st('final')); assert st('video') == 'stale' and st('final') == 'stale'
     pg.evaluate("document.getElementById('stage-video').scrollIntoView({block:'center'})"); shot('17-project-reapproval-needed')
     pg.click('[data-x="approve"][data-k="stills"]'); pg.wait_for_timeout(300)
-    pg.click('[data-x="regen"][data-k="video"]'); wait_for('video', 'awaiting'); pg.click('[data-x="approve"][data-k="video"]'); pg.wait_for_timeout(300)
+    pg.click('[data-x="regen"][data-k="video"]'); wait_for('video', 'done'); pg.wait_for_timeout(300)   # no Video gate: clips are previewed inside the Master gate
     # failure + retry demo on final
     pg.click('[data-x="failnext"]'); pg.click('[data-x="regen"][data-k="final"]'); wait_for('final', 'failed')
     pg.locator('#stage-final').scroll_into_view_if_needed(); shot('18-project-failed-retry')

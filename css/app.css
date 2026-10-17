@@ -326,3 +326,11 @@ pre.json:focus-visible{outline:2px solid #00C2FF;outline-offset:2px}
 @media (max-width:900px){.testbar span{order:3}}
 .agerow{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line)}.agerow>div{flex:1;min-width:220px}
 .log:focus-visible{outline:2px solid #00C2FF;outline-offset:2px}
+/* pass: live-run fixes */
+.phone.mini9 .fdisc{--pwarn:#B3261E;top:auto;bottom:10%;left:8px;right:8px;font-size:7px;line-height:1.25;color:#fff}
+.beatlist textarea.beatedit{width:100%;font-size:13px;padding:6px 8px;resize:vertical;min-height:44px}
+.beatlist.vlines li > div{grid-column:2}
+.ttsnote{font-size:11.5px;color:var(--mute);margin-top:6px}
+.beatedit.tpl{border-style:dashed}
+.brandwarn{margin-top:6px}
+.tgtnote{font-size:12px}

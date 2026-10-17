@@ -112,11 +112,17 @@ let STYLES = [
    sfx:'typographic poster, bold sans-serif, high contrast, minimal shapes, strict grid',mo:'Words hit on the beat: scale, slide, mask reveals.',cap:'Captions are the visual: full-screen type.'}];
 let STYLE_REC = {health:['photoreal','cinematic'],animals:['photoreal','clay'],faith:['cinematic','kinetic'],science:['cinematic','editorial_collage'],history:['editorial_collage','papercut'],money:['kinetic','whiteboard'],tech:['kinetic','cinematic']};
 const VOICES = [
+  {id:'maya',n:'Maya',r:'warm',d:'Friendly Filipino-English explainer',t:'PH · Female'},
+  {id:'paolo',n:'Paolo',r:'conversational',d:'Relaxed Filipino-English narrator',t:'PH · Male'},
+  {id:'nova',n:'Nova',r:'neutral',d:'Clear, neutral international English',t:'Neutral · Female'},
   {id:'adam',n:'Adam',r:'deep narrator',d:'Documentary, authoritative',t:'US · Male'},
   {id:'rachel',n:'Rachel',r:'warm',d:'Calm, friendly explainer',t:'US · Female'},
   {id:'josh',n:'Josh',r:'energetic',d:'Upbeat, punchy hooks',t:'US · Male'},
   {id:'bella',n:'Bella',r:'soft storyteller',d:'Gentle, intimate',t:'US · Female'},
   {id:'antoni',n:'Antoni',r:'conversational',d:'Relaxed, natural',t:'US · Male'}];
+/* default voice follows the target market until you pick one yourself */
+const VOICE_BY_MARKET = {PH:'maya', US:'rachel', CA:'rachel'};
+const voiceFor = m => VOICE_BY_MARKET[m] || 'nova';
 const ROLES = [['bg','Background'],['text','Text'],['hl','Highlight'],['accent','Accent'],['warn','Warning']];
 const FONTS = ['Poppins','Inter','Manrope','Outfit','Plus Jakarta Sans','DM Sans'];
 const CAPSTY = [{id:'pop',n:'Word pop',d:'One word at a time, scale-in',m:'<em>POTASSIUM</em>'},{id:'chunk3',n:'3-word chunks',d:'Short bursts, easy to read',m:'more <em>potassium</em> than'},{id:'line',n:'Full line',d:'Whole sentence, karaoke fill',m:'Avocados pack more <em>potassium</em> than bananas'}];
@@ -177,17 +183,25 @@ if (REAL) {
 }
 const styleRec = () => { if(!REAL) return STYLE_REC[S.niche]||[]; const f=RD.fit[`${S.niche}/${S.sub}`]; return f?[f.default,...(f.alts||[]).slice(0,1)]:[]; };
 const curSub = () => (N(S.niche).subs.find(s=>s[0]===S.sub)||[])[2];
-const topics = () => { const sb=curSub(); return (REAL&&sb&&sb.seeds.length)?sb.seeds.slice(0,5).map(t=>({t})):TOPICS; };
+/* Suggested topics must fit the chosen format and length: "in 30 seconds" follows the project duration, and a List countdown
+   (5 items) drops seeds with a different item count ("3 desk stretches", "Chicken adobo, 4 steps") or a 3-part rule ("50/30/20"). */
+function fitSeeds(seeds, format, dur){ const out=[];
+  (seeds||[]).forEach(t0=>{ let t=String(t0).replace(/\bin (\d+) seconds?\b/gi, `in ${dur} seconds`).replace(/\b(\d+)-second (video|explainer|guide)\b/gi, `${dur}-second $2`);
+    if(format==='list'){ const lead=t.match(/^(?:top\s+)?(\d+)\s+(?![-–%])/i), tail=t.match(/\b(\d+)\s+(steps|elements|tips|ways|things|items|spots|habits|signs|facts|reasons|rules|foods|stretches|myths)\b/i);
+      const n=lead?+lead[1]:tail?+tail[1]:null; if(n!==null&&n!==5) return; if(/\b\d+\s*[\/-]\s*\d+\s*[\/-]\s*\d+\b/.test(t)) return; }
+    out.push(t); });
+  return out; }
+const topics = () => { const sb=curSub(); if(!(REAL&&sb&&sb.seeds.length)) return TOPICS; const f=fitSeeds(sb.seeds,S.format,S.dur); return (f.length?f:[`${subName()}: ${S.format==='list'?'5 things to know':'explained'}`]).slice(0,5).map(t=>({t})); };
 
 /* ---------- state (prefilled example) ---------- */
 const S = {step:1,max:1,goal:REAL?'fb_monetization':'facebook',niche:REAL?'health_nutrition':'health',sub:REAL?'healthy_foods':'healthy',format:'list',dur:45,aspect:'9:16',style:REAL?'photoreal_macro':'photoreal',
-  voice:'adam',playing:'adam',lang:'English',pace:1.0,energy:'Warm',
-  pron:[['quinoa','KEEN-wah'],['açaí','ah-sah-EE'],['turmeric','TER-mer-ik'],['malunggay','ma-LOONG-guy']],
-  name:'Healthy Bites PH',handle:'@healthybitesph',logo:true,
+  voice:'maya',playing:'maya',voicePicked:false,aiLabel:'auto',lang:'English',pace:1.0,energy:'Warm',
+  pron:[],
+  name:'Your brand',handle:'@yourbrand',logo:false,
   pal:{bg:'#0B0F1A',text:'#F5F7FA',hl:'#16C784',accent:'#00C2FF',warn:'#EA3943'},
-  fh:'Poppins',fb:'Inter',cta:'Follow for a new healthy swap daily',end:'Eat smarter, one bite at a time.',
+  fh:'Poppins',fb:'Inter',cta:'Follow for more',end:'See you in the next one.',
   capStyle:'chunk3',capPos:'lower',counter:true,music:'Upbeat acoustic',sfx:'Med',
-  banned:REAL?['cure','treat','prevent','heal','detox','miracle','guaranteed']:['cure','treat','prevent','detox'],disclaimer:true,cite:true,plat:{yt:true,fb:true,tt:false,ig:true},
+  banned:REAL?['cure','treat','prevent','heal','detox','miracle','guaranteed']:['cure','treat','prevent','detox'],disclaimer:true,cite:true,plat:{yt:false,fb:false,tt:false,ig:false},
   acc:true,locked:false,locking:false,topic:0,
   vo:true,aiAck:false,aiTag:true,kids:false,noClaims:false,ownTopic:'',ackErr:false,projectId:null,compAck:false,version:1,versions:[],cap:20,market:'PH'};
 const S_DEFAULT = JSON.parse(JSON.stringify(S));
@@ -199,7 +213,7 @@ function sanitizeIntake(I, opts={}){ const o={}, D=S_DEFAULT, inList=(v,l)=>l.in
   const nn=N(o.niche||D.niche); o.sub=inList(I.sub,nn.subs.map(x=>x[0]))||(o.niche?nn.subs[0][0]:undefined);
   o.format=inList(I.format,FORMATS.map(f=>f.id)); o.aspect=inList(I.aspect,ASPECTS.map(a=>a.id));
   if(Number.isFinite(+I.dur)) o.dur=Math.max(10,Math.min(180,Math.round(+I.dur)));
-  o.style=inList(I.style,STYLES.map(x=>x.id)); o.voice=inList(I.voice,VOICES.map(v=>v.id));
+  o.style=inList(I.style,STYLES.map(x=>x.id)); o.voice=inList(I.voice,VOICES.map(v=>v.id)); o.voicePicked=I.voicePicked===true; o.aiLabel=I.aiLabel==='always'?'always':'auto';
   o.lang=str(I.lang,40)||undefined; o.energy=inList(I.energy,['Calm','Warm','Hype']); if(Number.isFinite(+I.pace)) o.pace=Math.max(0.7,Math.min(1.3,+I.pace));
   if(Array.isArray(I.pron)) o.pron=I.pron.filter(x=>Array.isArray(x)&&typeof x[0]==='string'&&typeof x[1]==='string').slice(0,40).map(([w,q])=>[str(w,40),str(q,60)]);
   ['name','handle','cta','end'].forEach(k=>{ const v=str(I[k],k==='end'||k==='cta'?140:60); if(v!==null) o[k]=v; });
@@ -217,12 +231,16 @@ function sanitizeIntake(I, opts={}){ const o={}, D=S_DEFAULT, inList=(v,l)=>l.in
     o.step=Math.max(1,Math.min(9,+o.step||1)); o.max=Math.max(1,Math.min(9,+o.max||1)); o.version=Math.max(1,+o.version||1); o.aiAck=o.aiAck===true; o.compAck=o.compAck===true; o.locked=o.locked===true; if(!Array.isArray(o.versions)) o.versions=[]; }
   else { o.aiAck=false; o.compAck=false; }
   return o; }
-const TRANSIENT=['locking','playing','ackErr'];
+const TRANSIENT=['locking','playing','ackErr','sample'];
 function saveDraft(){ if(!window.Store) return; const o={}; Object.keys(S).forEach(k=>{ if(!TRANSIENT.includes(k)) o[k]=S[k]; }); Store.saveDraft(o); const el=document.querySelector('.saved'); if(el){ el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); el.lastChild.textContent=' Autosaved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }
-const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic','cap','market'];
+const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic','cap','market','voicePicked','aiLabel'];
 const intakeSnapshot=()=>{ const o={}; INTAKE_FIELDS.forEach(k=>o[k]=JSON.parse(JSON.stringify(S[k]))); return o; };
 const REALISTIC=['photoreal_macro','archival_doc','photoreal','cinematic'];
 const isRealistic=()=>REALISTIC.includes(S.style);
+/* MASTER_PACK safety.ai_disclosure {label: auto|always}: auto = platform AI label whenever output is photoreal or could be mistaken for real.
+   A realistic synthetic narrator counts as could-be-mistaken-for-real (borderline), so voiceover on → label on. */
+const aiOn=()=>S.aiLabel==='always'||isRealistic()||!!S.vo;
+const aiReason=()=>S.aiLabel==='always'?'On: you chose "Always label".':isRealistic()?`On (auto): ${ST()?ST().n:'this style'} is a realistic style that could be mistaken for real footage.`:S.vo?'On (auto): the synthetic narrator sounds like a real person, so the video could be mistaken for real (borderline case, 3x3 labels it).':'Off (auto): stylised visuals and no voiceover, so nothing could be mistaken for real. Every description still lists the AI tools used.';
 const affOn=()=>S.goal==='affiliate';
 const claimsOn=()=>M3.needsNoClaims(S)||S.noClaims||(typeof bundleList==='function'&&bundleList().some(b=>b.banned_claims&&b.banned_claims.length));
 const BUNDLES=(REAL&&RD.bundles)||{};
@@ -335,8 +353,8 @@ const VIEWS = {
   <div class="stats st">
     <div class="stat c"><b>≈${words(S.dur)}<small>words</small></b><span>Word budget at 155 wpm</span></div>
     <div class="stat g"><b>${shots(S.dur)}<small>shots</small></b><span>At 2.5s max per shot</span></div>
-    <div class="stat"><b>${S.format==='list'?'5':'7'}<small>beats</small></b><span>${S.format==='list'?'Hook + 5 items + CTA':'Story beats'}</span></div>
-    <div class="stat"><b>~${Math.round(words(S.dur)/(S.format==='list'?7:7))}<small>w/beat</small></b><span>Avg words per beat</span></div></div>
+    <div class="stat"><b>${M3.BEATS[S.format].length}<small>beats</small></b><span>${M3.BEAT_LABEL[S.format]}</span></div>
+    <div class="stat"><b>~${Math.round(words(S.dur)/M3.BEATS[S.format].length)}<small>w/beat</small></b><span>Avg words per beat (${words(S.dur)} ÷ ${M3.BEATS[S.format].length})</span></div></div>
   <div class="lbl st">Aspect ratio</div><div class="grid g3">${ASPECTS.map(a=>`<button class="card acard st ${S.aspect===a.id?'sel':''}" data-set="aspect" data-val="${a.id}">${chk(S.aspect===a.id)}
     <div class="fbox"><div class="frame" style="width:${a.w}px;height:${a.h}px;color:${S.aspect===a.id?'var(--cyan)':'var(--mute)'}"></div></div><h3>${a.id}</h3><p>${a.d}</p></button>`).join('')}</div>`; },
 4(){ const rec=styleRec(), s=ST();
@@ -348,6 +366,7 @@ const VIEWS = {
     <div><h5>Motion rule</h5><p>${s.mo}</p></div>
     <div><h5>Caption treatment</h5><p>${s.cap}</p><div class="badge grn" style="margin-top:10px">${ic('check')}Applied to all ${shots(S.dur)} shots</div></div></div>`; },
 5(){ return sh('Narrator voice','Preview voices, then tune language, pace and energy.',`<span class="badge mute">${ic('info')}Example voices</span>`)+
+  `<p class="ttsnote st" id="ttsnote">${ic('info')} ${App.canSpeak()?'Play gives a short <b>browser voice sample</b> (simulator): it uses your pace, but it is not the ElevenLabs voice. The real build renders a 10-second sample from your ElevenLabs account.':'<b>Audio preview isn\'t available</b> in this browser (simulator). The real build renders a 10-second sample from your ElevenLabs account.'}</p>`+
   `<div class="trow st" style="margin-bottom:14px"><div class="tx"><h4>Voiceover narration</h4><p>${S.vo?'On. Needs an ElevenLabs API key in Connections.':'Off. Videos use captions and music only, so ElevenLabs is not needed.'}</p></div><div class="tog ${S.vo?'on':''}" data-act="tog" data-val="vo"></div></div>
   <div class="${S.vo?'':'dimmed'}" style="display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:16px;align-items:start">
    <div class="grid" style="gap:10px">${VOICES.map((v,vi)=>{const on=S.playing===v.id;
@@ -371,7 +390,7 @@ const VIEWS = {
     <div class="f2 st"><label class="field"><span>Brand name</span><input class="inp" data-in="name" maxlength="60" value="${esc(S.name)}"></label>
       <label class="field"><span>Handle</span><input class="inp" data-in="handle" maxlength="40" value="${esc(S.handle)}"></label></div>
     <div class="f2 st" style="margin-top:12px">
-      <div class="drop has"><div class="dz" style="background:${hx(S.pal.hl)};color:${onHl()}">${ic('leaf')}</div><div style="min-width:0"><b>healthybites-logo.png</b><small>512×512 · transparent · <a style="color:var(--cyan)">Replace</a></small></div></div>
+      <div class="drop"><div class="dz">${ic('up')}</div><div style="min-width:0"><b>Logo (optional)</b><small>Drop PNG 512×512. The brand initial is used until you add one.</small></div></div>
       <div class="drop"><div class="dz">${ic('up')}</div><div><b>Frame overlay</b><small>Drop PNG 1080×1920 (optional)</small></div></div></div>
     <div class="lbl st">Palette · 5 roles</div>
     <div class="pal st">${ROLES.map(([k,l])=>`<div class="sw"><label style="background:${hx(S.pal[k])}" data-sw="${k}"><input type="color" value="${hx(S.pal[k])}" data-col="${k}" aria-label="${l} colour"></label><span>${l}</span><input class="hex" value="${hx(S.pal[k])}" data-hex="${k}" maxlength="7" aria-label="${l} colour hex"></div>`).join('')}</div>
@@ -386,7 +405,7 @@ const VIEWS = {
     <div class="phones" id="pv">${phoneScene()}${phoneEnd()}</div></div></div>`; },
 7(){ return sh('Captions & audio','How words appear on screen and how the mix sounds.')+
   `<div class="lbl st">Caption style</div><div class="grid g3">${CAPSTY.map(c=>`<button class="card cs st ${S.capStyle===c.id?'sel':''}" data-set="capStyle" data-val="${c.id}">${chk(S.capStyle===c.id)}
-     <div class="mini" style="${c.id==='pop'?'font-size:20px':''}"><span>${c.m}</span>${affOn()?`<small class="miniaff">${esc(M3.AFFILIATE_LINE)}</small>`:''}</div><h3>${c.n}</h3><p>${c.d}</p></button>`).join('')}</div>
+     <div class="mini" style="${c.id==='pop'?'font-size:20px':''}"><span>${capSample(c.id)}</span>${affOn()?`<small class="miniaff">${esc(M3.AFFILIATE_LINE)}</small>`:''}</div><h3>${c.n}</h3><p>${c.d}</p></button>`).join('')}</div>
    <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;margin-top:4px">
     <div><div class="lbl st">Position</div><div class="grid g3">${CAPPOS.map(p=>`<button class="card poscard st ${S.capPos===p.id?'sel':''}" data-set="capPos" data-val="${p.id}"><div class="pf"><i style="top:${p.y}px"></i></div><h3>${p.n}</h3></button>`).join('')}</div></div>
     <div><div class="lbl st">On-screen</div><div class="trow st"><div class="tx"><h4>Progress counter</h4><p>Shows "3/6" style beat counter</p></div><div class="tog ${S.counter?'on':''}" data-act="tog" data-val="counter"></div></div></div></div>
@@ -440,12 +459,19 @@ const VIEWS = {
   <button class="lockbtn st ${S.locking?'locking':''}" data-act="lock" ${canLock()?'':'disabled'}>${ic('lock')}${S.locking?'Locking intake…':(!S.aiAck?'Confirm AI disclosure first (step 8)':blockedGoal()?'Goal not allowed for this niche':topicHits().length?'Remove banned words from your topic':(S.topic===-1&&!S.ownTopic.trim())?'Write your topic or pick one':!S.compAck?'Tick the compliance check to lock':`Lock intake v${S.version} & build rules`)}</button>`; }
 };
 
+/* preview caption follows the current topic (and so the niche), never a fixed food example */
+function sampleWords(){ const w=curTopic().replace(/["“”]/g,'').split(/\s+/).filter(Boolean).slice(0,7); return w.length?w:['Your','topic','here']; }
+function capSample(mode){ const w=sampleWords(); let hi=0; w.forEach((x,i)=>{ if(x.replace(/\W/g,'').length>w[hi].replace(/\W/g,'').length) hi=i; });
+  const em=i=>`<em>${esc(w[i])}</em>`;
+  if(mode==='pop') return `<em>${esc(w[hi].toUpperCase())}</em>`;
+  if(mode==='chunk3'){ const a=Math.max(0,Math.min(hi-1,w.length-3)); return w.slice(a,a+3).map((x,j)=>a+j===hi?em(hi):esc(x)).join(' '); }
+  return w.map((x,i)=>i===hi?em(i):esc(x)).join(' '); }
 function phoneScene(){ return `<div><div class="phone"><div class="notch"></div><div class="scene"></div>
   <div class="pprog">${[1,2,3,4,5,6].map(i=>`<i class="${i<=3?'f':''}"></i>`).join('')}</div>
   <div class="safez t"><span>250px safe</span></div><div class="safez b"><span>400px safe</span></div><div class="pdisc" style="color:${cr('#FFFFFF',hx(S.pal.warn))>=cr('#0B0F1A',hx(S.pal.warn))?'#FFFFFF':'#0B0F1A'}">${esc(shortDisc())}</div><div class="pctr">3/6</div>${S.aiTag||isRealistic()?'<div class="paitag">AI-generated</div>':''}
-  <div class="pcap">Avocados pack more <em>potassium</em> than bananas${affOn()?`<span class="paff">${esc(M3.AFFILIATE_LINE)}</span>`:''}</div>
-  <div class="plt"><div class="plogo">${ic('leaf')}</div><div style="min-width:0"><b data-bind="name">${esc(S.name)}</b><small data-bind="handle">${esc(S.handle)}</small></div></div></div><div class="phcap">Scene · beat 3</div></div>`; }
-function phoneEnd(){ return `<div><div class="phone sm"><div class="notch"></div><div class="pend"><div class="plogo">${ic('leaf')}</div><b data-bind="name">${esc(S.name)}</b>
+  <div class="pcap">${capSample('line')}${affOn()?`<span class="paff">${esc(M3.AFFILIATE_LINE)}</span>`:''}</div>
+  <div class="plt"><div class="plogo">${esc((S.name||'?').trim().charAt(0).toUpperCase()||'?')}</div><div style="min-width:0"><b data-bind="name">${esc(S.name)}</b><small data-bind="handle">${esc(S.handle)}</small></div></div></div><div class="phcap">Scene · beat 3</div></div>`; }
+function phoneEnd(){ return `<div><div class="phone sm"><div class="notch"></div><div class="pend"><div class="plogo">${esc((S.name||'?').trim().charAt(0).toUpperCase()||'?')}</div><b data-bind="name">${esc(S.name)}</b>
   <p data-bind="end">${esc(S.end)}</p><span class="cta" data-bind="cta">${esc(S.cta)}</span>${affOn()?`<span class="paff" style="position:static;margin-top:6px">${esc(M3.AFFILIATE_LINE)}</span>`:''}<small data-bind="handle">${esc(S.handle)}</small></div></div><div class="phcap">End card</div></div>`; }
 function applyPreviewVars(){ const el=document.getElementById('pv'); if(!el) return;
   const p=S.pal; Object.assign(el.style,{}); el.style.setProperty('--pbg',p.bg); el.style.setProperty('--ptext',p.text); el.style.setProperty('--phl',p.hl);
@@ -470,15 +496,16 @@ function disclaimerText(){ const fd=forcedDisc(); if(fd&&fd.disclaimer.on_screen
 function shortDisc(){ return S.niche==='finance'?'Not financial advice':(['health_nutrition','human_body'].includes(S.niche)?'Not medical advice':'General info'); }
 const CLAIM_RULES={health:(REAL&&RD.rules.safety.claim_rules)||['No disease treatment/prevention claims'],finance:['No promised or "guaranteed" returns','No personalised investment, crypto or tax advice','Show risk on any return figure','No AI persona presented as a licensed adviser']};
 function claimRules(){ const bc=[...new Set(bundleList().flatMap(b=>b.banned_claims||[]))]; if(bc.length) return bc.map(x=>'No '+x.replace(/^no /i,'')); return S.niche==='finance'||/invest|credit|crypto/.test(S.sub||'')?CLAIM_RULES.finance:CLAIM_RULES.health; }
-function aiPlatSummary(){ const p=Object.keys(S.plat).filter(k=>S.plat[k]); return p.length?p.map(k=>M3.AI_DISCLOSURE[k].label).filter((v,i,a)=>a.indexOf(v)===i).join(' · '):'No platforms selected'; }
+function aiPlatSummary(){ const p=Object.keys(S.plat).filter(k=>S.plat[k]); if(!aiOn()) return 'Auto: platform labels off (stylised, no voiceover)'; return p.length?p.map(k=>M3.AI_DISCLOSURE[k].label).filter((v,i,a)=>a.indexOf(v)===i).join(' · '):'No platforms selected'; }
 function step8Extra(){ const plats=Object.keys(S.plat).filter(k=>S.plat[k]); const auto=M3.needsNoClaims(S);
   return `<div class="panel st aipanel ${S.ackErr?'shake':''}" id="aiDisc"><div class="lbl" style="margin-top:0">${ic('eye')}AI disclosure <span class="badge red" style="text-transform:none;letter-spacing:0">${ic('lock')}Required · can't be skipped</span></div>
     ${isRealistic()?`<div class="errbanner" style="margin:0 0 10px">${ic('warn')}<div><b>Photoreal style selected.</b> Realistic-looking AI scenes must carry the platform AI label. Hiding it can get videos removed or your account struck.</div></div>`:''}
+    <div class="trow" id="aiauto" style="margin:0 0 10px"><div class="tx"><h4>Platform AI label: ${S.aiLabel==='always'?'Always':'Auto (spec default)'}</h4><p id="aireason">${esc(aiReason())}</p></div><div class="tog ${S.aiLabel==='always'?'on':''}" data-act="ailabel" role="switch" tabindex="0" aria-checked="${S.aiLabel==='always'}" aria-label="Always apply the platform AI label"></div></div>
     <table class="aitable"><thead><tr><th>Platform</th><th>Label applied</th><th>How 3x3 applies it</th></tr></thead><tbody>
-    ${plats.length?plats.map(k=>{const d=M3.AI_DISCLOSURE[k];return `<tr><td>${d.n}</td><td><span class="badge vio">${d.label}</span></td><td>${d.how}</td></tr>`}).join(''):'<tr><td colspan="3" style="color:var(--mute)">Select at least one platform above.</td></tr>'}
+    ${plats.length?plats.map(k=>{const d=M3.AI_DISCLOSURE[k];return `<tr><td>${d.n}</td><td>${aiOn()?`<span class="badge vio">${d.label}</span>`:'<span class="badge mute">Not needed (auto)</span>'}</td><td>${d.how}</td></tr>`}).join(''):'<tr><td colspan="3" style="color:var(--mute)">No platforms selected yet. Pick where you plan to publish above, or leave them all off to download only.</td></tr>'}
     </tbody></table>
     <div class="trow" style="margin-top:10px"><div class="tx"><h4>On-screen "AI-generated" tag</h4><p>${isRealistic()?'Locked on for photoreal styles.':'Small corner tag on the first 3 seconds.'}</p></div><div class="tog ${S.aiTag||isRealistic()?'on':''} ${isRealistic()?'locked':''}" ${isRealistic()?'':'data-act="tog" data-val="aiTag"'}></div></div>
-    <label class="ack ${S.aiAck?'on':''}"><input type="checkbox" data-act="ack" ${S.aiAck?'checked':''}><span>I understand every video is labeled as AI-generated on each platform above, and these labels can't be turned off.</span></label></div>
+    <label class="ack ${S.aiAck?'on':''}"><input type="checkbox" data-act="ack" ${S.aiAck?'checked':''}><span>I understand 3x3 applies each platform's AI label whenever a video is realistic or could be mistaken for real (auto), or on every video if I choose "Always", and that every description lists the AI tools used.</span></label></div>
   <div class="grid g2" style="margin-top:12px">
     <div class="trow st" style="align-items:flex-start;flex-wrap:wrap"><div class="tx"><h4>No-claims rules ${auto?`<span class="badge mute">${ic('lock')}Auto-on for this niche</span>`:''}</h4><p>${auto?'Health, finance and crypto topics always run strict claim checks.':'Optional for this niche.'}</p></div><div class="tog ${claimsOn()?'on':''} ${auto?'locked':''}" ${auto?'':'data-act="tog" data-val="noClaims"'}></div>
       ${claimsOn()?`<ul class="claimlist">${claimRules().map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:''}</div>
@@ -495,7 +522,7 @@ function contrastBox(){ const P=Object.fromEntries(Object.entries(S.pal).map(([k
   return `<div class="lbl">Contrast check <span class="r" style="color:var(--dim)">WCAG AA needs 4.5:1</span></div><div class="contrast">${rows.map(([n,f,b])=>{const r=cr(f,b);return `<div class="crow ${r>=4.5?'pass':'fail'}"><span class="sw2" style="color:${hx(f)};background:${hx(b)}" data-t="Aa" role="img" aria-label="Sample"></span><span>${n}</span><b>${r.toFixed(2)}:1 ${r>=4.5?'✓':'✗ too low'}</b></div>`}).join('')}
    ${wt<4.5?`<div class="crow fail"><span class="sw2" style="color:#fff;background:${P.hl}" data-t="Aa" role="img" aria-label="Blocked sample: white on highlight"></span><span>White text on highlight is blocked</span><b>${wt.toFixed(2)}:1</b></div>`:''}</div>`; }
 function bundleBanner(){ const bl=bundleList(); if(!bl.length) return ''; return `<div class="infobox st" style="background:rgba(139,92,246,.07);border-color:rgba(139,92,246,.35)">${ic('lock')}<div><b>Forced rule bundle${bl.length>1?'s':''}: ${esc(bl.map(b=>b.name).join(' · '))}</b><br>These settings are locked for ${esc(subName())}: ${[forcedDisc()?(forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer':'disclaimer'):'', claimsOn()?'no-claims rules':'', kidsForced()?'made for kids + YouTube only':'', forcedWords().length?forcedWords().length+' banned words':''].filter(Boolean).join(' · ')}.${blockedGoal()?` <b style="color:#ffb1b5">Your goal (${esc(G(S.goal).n)}) is blocked for this niche.</b>`:''}</div></div>`; }
-function marketField(){ return `<label class="field st" style="max-width:320px;margin-top:12px"><span>Target market (sets age limits)</span><select class="inp" data-in="market">${M3.MARKETS.map(([c,n,a])=>`<option value="${c}" ${S.market===c?'selected':''}>${n} · drinking age ${a}</option>`).join('')}</select></label>`; }
+function marketField(){ const alc=M3.isAlcohol(S); return `<label class="field st" style="max-width:320px;margin-top:12px"><span>Target market${alc?' (sets alcohol age limits)':''}</span><select class="inp" data-in="market">${M3.MARKETS.map(([c,n,a])=>`<option value="${c}" ${S.market===c?'selected':''}>${n}${alc?` · drinking age ${a}`:''}</option>`).join('')}</select></label>`; }
 function alcoholWarn(){ if(!M3.isAlcohol(S)) return ''; return `<div class="errbanner st" style="margin-top:12px;background:rgba(255,176,32,.08);border-color:rgba(255,176,32,.5)">${ic('warn')}<div><b>Alcohol niche: never auto-published.</b> ${esc(M3.ALCOHOL_YT)}${S.plat.yt?'':' (YouTube isn\'t selected right now.)'}</div></div>`; }
 function topicSection(ro){ const hits=topicHits(), tb=M3.topicBundles(M3.topicText(S));
   return `<div class="lbl st">${ic('spark')}Suggested topics · ${esc(subName())} <span class="r">${REAL?`<span class="badge grn">From research topic seeds</span>`:`<span class="badge warn">Example data, research pending</span>`}</span></div>
@@ -532,10 +559,10 @@ function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S
     captions:{style:S.capStyle,position:S.capPos,counter:S.counter,on_every_frame:true,safe_zone_px:{top:250,bottom:400},affiliate_line:affOn()?M3.AFFILIATE_LINE:null},
     audio:{music:S.music,sfx:S.sfx.toLowerCase(),lufs:-14,true_peak_db:-1},
     rule_bundles_applied:bundleIds(), bundle_rules:Object.fromEntries(bundleList().map(b=>[b.id,Object.fromEntries(['visual_rules','subject_rules','pii','sources','age_gate','cta','affiliate'].filter(f=>b[f]).map(f=>[f,b[f]]).concat(b.publishing?[['auto_publish',b.publishing.auto_publish!==false]]:[]))])), generation_routing:{route:'xai_api',browser_routing_allowed:false}, safety:{banned_words:S.banned,no_claims:claimsOn()?claimRules():false,disclaimer:discOn()?{text:disclaimerText(),locked:highRisk()}:false,cite_sources:true,made_for_kids:kidsOn(), made_for_kids_forced:kidsForced(), made_for_kids_blocked:kidsBlocked()},
-    ai_disclosure:{required:true,acknowledged:S.aiAck,on_screen_tag:S.aiTag||isRealistic(),photoreal:isRealistic(),platforms:Object.fromEntries(plats.map(k=>[k,M3.AI_DISCLOSURE[k].label]))},
+    ai_disclosure:{required:true,label:S.aiLabel,labels_on:aiOn(),reason:aiReason(),tools_line:true,acknowledged:S.aiAck,on_screen_tag:S.aiTag||isRealistic(),photoreal:isRealistic(),synthetic_voice:!!S.vo,platforms:aiOn()?Object.fromEntries(plats.map(k=>[k,M3.AI_DISCLOSURE[k].label])):{}},
     affiliate_disclosure:affOn()?{required:true,on_screen:true,in_description:true,text:M3.AFFILIATE_LINE}:null,
     budget:{daily_cap_usd:Math.min(M3.CAP_MAX,+S.cap||M3.CAP_MAX),est_cost_per_video_usd:M3.videoCost(S),enforced_by:'server-side ledger + user Grok Bot in production (simulated here)'}, tiktok:S.plat.tt?{duration_s:S.dur,creator_rewards_eligible:S.dur>60}:null,
-    market:{code:S.market,drinking_age:M3.drinkingAge(S.market),facebook_age_min:M3.ageMin(S.market)}, platforms:plats, publish_via:'official APIs only', gates:['script','stills','video','final'], approvals:'hash-locked'}; }
+    market:{code:S.market,drinking_age:M3.drinkingAge(S.market),facebook_age_min:M3.ageMin(S.market)}, platforms:plats, publish_via:'official APIs only', gates:S.vo?['script','voice','stills','final']:['script','stills','final'], clip_preview:'inside the Master gate (final)', approvals:'hash-locked'}; }
 
 /* load the autosaved draft (validated: it may have been edited in devtools) */
 (function(){ const d=window.Store&&Store.getDraft(); if(d&&d.goal&&GOALS.find(g=>g.id===d.goal)) Object.assign(S,sanitizeIntake(d,{keepState:true}),{locking:false,playing:null,ackErr:false}); else S.playing=null; })();
@@ -589,9 +616,10 @@ function intakeClick(e){
   if(a){ const v=a.dataset.val; e.stopPropagation();
     if(S.locked&&!['create','newversion','viewver','acc','export','play','newintake'].includes(a.dataset.act)){ App.toast(`v${S.version} is locked. Use "Edit as v${S.version+1}" on Review.`,'err'); return; }
     switch(a.dataset.act){
-      case 'play': S.playing = S.playing===v?null:v; break;
+      case 'play': { S.playing = S.playing===v?null:v; if(S.playing){ const vv=VOICES.find(x=>x.id===v)||{n:'This voice'}; const eng=App.say(`Hi, I'm ${vv.n}. This is a short sample at your pace and energy for ${S.name||'your brand'}.`, S.pace); S.sample={voice:v, engine:eng}; if(!eng) App.toast('Audio preview isn\'t available in this browser (simulator)','err'); } else if(window.speechSynthesis){ try{ speechSynthesis.cancel(); }catch(e){} } break; }
       case 'tog': if(v==='kids'&&(kidsForced()||kidsBlocked())) return; S[v]=!S[v]; changed=v; break;
       case 'ack': S.aiAck=a.checked; changed='aiAck'; break;
+      case 'ailabel': S.aiLabel=S.aiLabel==='always'?'auto':'always'; changed='aiLabel'; break;
       case 'plat': if(kidsForced()&&v!=='yt'){ App.toast('Kids projects publish to YouTube only (COPPA bundle)','err'); return; } S.plat[v]=!S.plat[v]; changed='plat'; break;
       case 'preset': applyPreset(); break;
       case 'delword': if(forcedWords().includes(S.banned[+v])) return; S.banned.splice(+v,1); break;
@@ -616,7 +644,7 @@ function intakeClick(e){
   const s=e.target.closest('[data-set]');
   if(s&&S.locked){ App.toast(`v${S.version} is locked. Use "Edit as v${S.version+1}" on Review.`,'err'); return; }
   if(s){ const k=s.dataset.set; let v=s.dataset.val; if(k==='dur'||k==='topic') v=+v;
-    if(S[k]===v) return; S[k]=v; changed=k;
+    if(S[k]===v) return; S[k]=v; changed=k; if(k==='voice') S.voicePicked=true;
     if(k==='niche') onNiche(v);
     if(k==='sub'||k==='topic'){ applyBundles(); }
     if(k==='sub'&&REAL){ const f=RD.fit[`${S.niche}/${v}`]; if(f&&f.default&&STYLES.find(x=>x.id===f.default)) S.style=f.default; S.topic=0; }
@@ -631,6 +659,7 @@ document.addEventListener('input',e=>{
   if(k==='cap'){ S.cap=Math.max(1,Math.min(M3.CAP_MAX,Math.round(+t.value||M3.CAP_MAX))); if(+t.value>M3.CAP_MAX) t.value=M3.CAP_MAX; saveDraft(); return; }
   if(k==='ownTopic'){ const before=bundleIds().join(), hb=topicHits().join(); S.ownTopic=t.value.slice(0,160); if(S.topic!==-1) S.topic=-1;
     if(bundleIds().join()!==before||topicHits().join()!==hb){ applyBundles(); S.compAck=false; render(); } else { document.getElementById('foot').innerHTML=footer(); const lb=document.querySelector('.lockbtn'); if(lb) lb.disabled=!canLock(); saveDraft(); } return; }
+  if(k==='market'&&!S.voicePicked){ S.voice=voiceFor(t.value); S.playing=S.voice; }
   if(k){ S[k]= k==='pace'?+t.value:t.value; if(k==='pace'){document.getElementById('paceV').textContent=S.pace.toFixed(2)+'×';}
     document.querySelectorAll(`[data-bind="${k}"]`).forEach(el=>el.textContent=t.value);
     applyPreviewVars(); document.getElementById('sum').innerHTML=summary(); document.getElementById('rail').innerHTML=rail(); saveDraft(); return; }
@@ -644,6 +673,6 @@ window.Intake = {
   html(){ return `<div class="body"><aside class="rail" id="rail"></aside><main class="main"><div class="mob-steps" id="mob"></div><div class="scroll" id="scroll"><div id="content"></div></div><div class="foot" id="foot"></div></main><aside class="sum" id="sum"></aside></div>`; },
   mount(step){ window.INTAKE_ON=true; if(!window._bundlesApplied){ window._bundlesApplied=true; if(!S.locked) applyBundles(); } if(step){ S.step=Math.max(1,Math.min(9,step)); if(S.step>8&&!S.aiAck&&!S.locked) { S.step=8; } S.max=Math.max(S.max,S.step); } stepChanged=true; render(); },
   unmount(){ window.INTAKE_ON=false; },
-  state:S, snapshot:intakeSnapshot, rerender(){ if(window.INTAKE_ON){ render(); } },
+  state:S, snapshot:intakeSnapshot, voiceFor, aiOn, aiReason, fitSeeds, topics, capSample, rerender(){ if(window.INTAKE_ON){ render(); } },
   reset(){ Object.assign(S, JSON.parse(JSON.stringify(S_DEFAULT)), {playing:null}); },
 };

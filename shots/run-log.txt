@@ -9,21 +9,21 @@ step 8 gate OK
 shot 08-intake-safety-ai
 shot 09-intake-review
 shot 10-intake-locked
-project http://localhost:8765/?static=1#/project/prj_wok4esavfe
+project http://localhost:8765/?static=1#/project/prj_qldjwv8x6r
 shot 11-project-needs-you
 shot 12-connections-missing
 real-looking key rejected: Test mode: that looks like a real key, so it was rejected and not stor
-signing secret shown once: test_sig_04ce4…
+signing secret shown once: test_sig_41a66…
 shot 12b-connections-worker-secret
 worker failure message OK
 worker connected OK
 shot 13-connections-oauth-popup
-tiktok status: Connected as @healthybitesph (simulated)
+tiktok status: Connected as @your_tiktok (simulated)
 shot 14-connections-connected
 shot 15-project-script-approval
 approved script
+approved voice
 approved stills
-approved video
 approved final
 shot 16-project-publish-choice
 after swap: awaiting stale stale
