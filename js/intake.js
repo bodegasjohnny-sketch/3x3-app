@@ -189,12 +189,12 @@ const S = {step:1,max:1,goal:REAL?'fb_monetization':'facebook',niche:REAL?'healt
   capStyle:'chunk3',capPos:'lower',counter:true,music:'Upbeat acoustic',sfx:'Med',
   banned:REAL?['cure','treat','prevent','heal','detox','miracle','guaranteed']:['cure','treat','prevent','detox'],disclaimer:true,cite:true,plat:{yt:true,fb:true,tt:false,ig:true},
   acc:true,locked:false,locking:false,topic:0,
-  vo:true,aiAck:false,aiTag:true,kids:false,noClaims:false,ownTopic:'',ackErr:false,projectId:null,compAck:false,version:1,versions:[]};
+  vo:true,aiAck:false,aiTag:true,kids:false,noClaims:false,ownTopic:'',ackErr:false,projectId:null,compAck:false,version:1,versions:[],cap:20};
 const S_DEFAULT = JSON.parse(JSON.stringify(S));
 (function(){ const d=window.Store&&Store.getDraft(); if(d&&REAL&&RD.renamed&&RD.renamed[d.style]) d.style=RD.renamed[d.style]; if(d&&d.goal&&GOALS.find(g=>g.id===d.goal)) Object.assign(S,d,{locking:false,playing:null,ackErr:false}); else S.playing=null; })();
 const TRANSIENT=['locking','playing','ackErr'];
 function saveDraft(){ if(!window.Store) return; const o={}; Object.keys(S).forEach(k=>{ if(!TRANSIENT.includes(k)) o[k]=S[k]; }); Store.saveDraft(o); const el=document.querySelector('.saved'); if(el){ el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); el.lastChild.textContent=' Autosaved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }
-const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic'];
+const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic','cap'];
 const intakeSnapshot=()=>{ const o={}; INTAKE_FIELDS.forEach(k=>o[k]=JSON.parse(JSON.stringify(S[k]))); return o; };
 const REALISTIC=['photoreal_macro','archival_doc','photoreal','cinematic'];
 const isRealistic=()=>REALISTIC.includes(S.style);
@@ -302,7 +302,7 @@ const VIEWS = {
   `<div class="lbl st">Format</div><div class="grid g3">${FORMATS.map(f=>`<button class="card st ${S.format===f.id?'sel':''}" data-set="format" data-val="${f.id}">${chk(S.format===f.id)}
     <div class="ico" style="--c:rgba(0,194,255,.12);--cc:var(--cyan)">${ic(f.i)}</div><h3>${f.n}</h3><p>${f.d}</p>
     <div class="beats">${f.beats.map((b,j)=>`<i class="${f.k.includes(j)?'k':''}" style="height:${b*12}%"></i>`).join('')}</div></button>`).join('')}</div>
-  <div class="lbl st">Duration ${S.goal==='tiktok_rewards'&&S.dur<=60?'<span class="badge warn" style="text-transform:none;letter-spacing:0">TikTok Rewards needs over 60s</span>':''}<span class="r" style="color:var(--dim)">≈155 wpm narration · max 2.5s per shot</span></div>
+  <div class="lbl st">Duration ${(S.goal==='tiktok_rewards'||S.plat.tt)&&S.dur<=60?'<span class="badge warn" style="text-transform:none;letter-spacing:0">TikTok: Not Creator Rewards eligible (needs 61s+)</span>':''}<span class="r" style="color:var(--dim)">≈155 wpm narration · max 2.5s per shot</span></div>
   <div class="st">${seg('dur',[30,45,60,90],S.dur)}</div>
   <div class="stats st">
     <div class="stat c"><b>≈${words(S.dur)}<small>words</small></b><span>Word budget at 155 wpm</span></div>
@@ -383,11 +383,11 @@ const VIEWS = {
     <div class="trow st" style="align-items:flex-start"><div class="tx"><h4>Cite a source for every fact <span class="badge mute">${ic('lock')}Locked on</span></h4><p>Each claim in the script carries a source URL that reviewers can check before approval.</p></div><div class="tog on locked" title="Always on"></div></div></div>
   <div class="lbl st">Publish to</div>
   <div class="grid g4">${PLATS.map(p=>`<button class="card plat st ${S.plat[p.id]?'sel':''}" data-act="plat" data-val="${p.id}" ${kidsForced()&&p.id!=='yt'?'disabled title="Kids projects publish to YouTube only"':''}><div class="ico" style="--c:${p.c}1f;--cc:${p.c}">${ic(p.i)}</div><h3>${p.n}</h3><span class="cbx">${ic('check')}</span></button>`).join('')}</div>
-  ${S.plat.tt&&S.dur<=60?`<p class="st" style="margin-top:10px;font-size:12px;color:#ffb1b5">${ic('info')} TikTok Creator Rewards only counts videos over 1 minute; current duration is ${S.dur}s.</p>`:''}
+  ${S.plat.tt?`<p class="st" style="margin-top:10px;font-size:12px">${S.dur<=60?`<span class="badge warn" style="margin-right:6px">TikTok: Not Creator Rewards eligible</span><span class="muted">${S.dur}s is fine for reach. Creator Rewards needs 61s or longer (pick 90s in Format).</span>`:`<span class="badge grn">${ic('check')}TikTok: Creator Rewards eligible (${S.dur}s)</span>`}</p>`:''}
   ${alcoholWarn()}
   ${step8Extra()}`; },
 9(){ const items=[['Goal',G(S.goal).n,'Primary monetization path',1],['Niche',`${N(S.niche).n} › ${subName()}`,REAL?`Compliance: ${(curSub()||{}).risk||'—'}`:'Example data',2],
-    ['Format',`${F().n} · ${S.dur}s`,`${S.aspect} · ≈${words(S.dur)} words · ${shots(S.dur)} shots`,3],['Style',ST().n,ST().mo,4],
+    ['Format',`${F().n} · ${S.dur}s`,`${S.aspect} · ≈${words(S.dur)} words · ${shots(S.dur)} shots${S.plat.tt&&S.dur<=60?' · TikTok: not Rewards eligible':''}`,3],['Budget',`$${S.cap}/day cap`,'Per user · enforced by your Grok Bot',9],['Style',ST().n,ST().mo,4],
     ['Voice',S.vo?`${V().n} – ${V().r}`:'No voiceover',S.vo?`${S.lang} · ${S.pace.toFixed(2)}× · ${S.energy}`:'Captions + music only',5],['Brand',S.name,`${S.handle} · ${S.fh} / ${S.fb}`,6],
     ['Captions',`${capN()} · ${posN()}`,`Counter ${S.counter?'on':'off'}${affOn()?' · affiliate line on':''}`,7],['Audio',`${S.music} · SFX ${S.sfx}`,'−14 LUFS',7],
     ['Safety',`${S.banned.length} banned · sources on${claimsOn()?' · no-claims':''}`,`${S.kids?'Made for kids · ':''}${platList().join(', ')}`,8],
@@ -434,7 +434,7 @@ function rulesJSON(){
 
 /* ---------- 3x3 additions: warnings, AI disclosure, claims, cost, rules ---------- */
 function monoWarnings(){ const w=[];
-  if(S.goal==='tiktok_rewards'||S.plat.tt) w.push(`TikTok Creator Rewards only pays on videos <b>over 1 minute</b>${S.dur<=60?` (yours is ${S.dur}s; the TikTok preset uses 90s)`:''}.`);
+  if(S.goal==='tiktok_rewards'||S.plat.tt) w.push(`TikTok Creator Rewards only pays on videos <b>61s or longer</b>. 30–60s is fine for reach, but it gets labelled <b>Not Creator Rewards eligible</b>${S.dur<=60?` (yours is ${S.dur}s; the TikTok preset uses 90s)`:''}.`);
   w.push('Mass-produced, templated or repetitive videos get <b>demonetized</b> (YouTube "inauthentic content", Meta "unoriginal content"). 3x3 varies topic, script and visuals every time. Don\'t post near-duplicates.');
   if(S.goal==='yt_monetization') w.push('YouTube Partner Program needs 1,000 subscribers plus 10M Shorts views in 90 days, or 4,000 long-form watch hours in 12 months.');
   if(S.goal==='fb_monetization') w.push('Facebook only pays for original content. Reposted or lightly edited clips earn nothing.');
@@ -481,6 +481,7 @@ function costEstimate(){ const w=words(S.dur), ch=Math.round(w*5.8), n=shots(S.d
    <div class="stat g"><b>~${n+sw}<small>images</small></b><span>Grok Imagine stills: ${n} shots + ~${sw} swaps</span></div>
    <div class="stat"><b>~${n}<small>clips</small></b><span>Grok Imagine image→video, one per still</span></div>
    <div class="stat"><b>${S.dur}s</b><span>Final length · −14 LUFS</span></div></div>
+   <div class="caprow"><label class="field" style="max-width:220px"><span>Daily spend cap per user (USD)</span><input class="inp" type="number" min="1" max="500" step="1" data-in="cap" value="${S.cap}"></label><p class="muted">Default is <b>$20/day</b>. Your Grok Bot pauses new jobs once the day's estimated xAI + ElevenLabs spend reaches the cap, and the step shows "Needs you".</p></div>
    <p class="muted" style="margin-top:8px">Grok Imagine runs on the xAI API, which bills per generation and has rate limits. Check current pricing on your own xAI and ElevenLabs plans. Re-runs and swaps add to these numbers.</p></div>`; }
 function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S.plat).filter(k=>S.plat[k]);
   return {rule_set_version:S.version,intake_version:S.version, intake_hash:M3.hash(intakeSnapshot()), goal:{id:S.goal,name:g.full||g.n,cta:S.cta},
@@ -496,6 +497,7 @@ function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S
     rule_bundles_applied:bundleIds(), safety:{banned_words:S.banned,no_claims:claimsOn()?claimRules():false,disclaimer:discOn()?{text:disclaimerText(),locked:highRisk()}:false,cite_sources:true,made_for_kids:S.kids||kidsForced(), made_for_kids_forced:kidsForced()},
     ai_disclosure:{required:true,acknowledged:S.aiAck,on_screen_tag:S.aiTag||isRealistic(),photoreal:isRealistic(),platforms:Object.fromEntries(plats.map(k=>[k,M3.AI_DISCLOSURE[k].label]))},
     affiliate_disclosure:affOn()?{required:true,on_screen:true,in_description:true,text:M3.AFFILIATE_LINE}:null,
+    budget:{daily_cap_usd:+S.cap||20,enforced_by:'user Grok Bot (pauses jobs at cap)'}, tiktok:S.plat.tt?{duration_s:S.dur,creator_rewards_eligible:S.dur>60}:null,
     platforms:plats, publish_via:'official APIs only', gates:['script','stills','video','final'], approvals:'hash-locked'}; }
 
 /* ---------- render ---------- */
@@ -580,6 +582,7 @@ document.addEventListener('input',e=>{
   if(!window.INTAKE_ON) return;
   const t=e.target, k=t.dataset.in;
   if(k&&S.locked&&k!=='ownTopic') return;
+  if(k==='cap'){ S.cap=Math.max(1,Math.min(500,Math.round(+t.value||20))); saveDraft(); return; }
   if(k){ S[k]= k==='pace'?+t.value:t.value; if(k==='pace'){document.getElementById('paceV').textContent=S.pace.toFixed(2)+'×';}
     document.querySelectorAll(`[data-bind="${k}"]`).forEach(el=>el.textContent=t.value);
     applyPreviewVars(); document.getElementById('sum').innerHTML=summary(); document.getElementById('rail').innerHTML=rail(); saveDraft(); return; }
