@@ -115,7 +115,7 @@
         Store.saveConnection('worker', {status:'pending', url:u.origin + '/…', last4:kk.last4, fp:M3.hash(W.secret).slice(0,8)}); return; }
       case 'copysecret': { const t = Pages._w.secret; if (t && navigator.clipboard) navigator.clipboard.writeText(t).then(() => App.toast('Copied. Save it in your bot as THREEX3_SIGNING_SECRET'), () => App.toast('Select the text and copy it')); return; }
       case 'wsaved': Pages._w.saved = a.checked; route(); return;
-      case 'wtest': { const W = Pages._w; if (!W.saved) return; W.testing = true; W.fail = false; const j = Store.dispatchJob({kind:'ping', payload:{purpose:'test', signed:'HMAC-SHA256 (server-side in production)'}}); W.testJobId = j.id; route(); return; }
+      case 'wtest': { const W = Pages._w; if (!W.saved) return; W.testing = true; W.fail = false; const j = Store.dispatchJob({kind:'ping', payload:{purpose:'test', signed:'simulated (planned: Ed25519 dispatch signature by 3x3 server; reply signed with THREEX3_SIGNING_SECRET)'}}); W.testJobId = j.id; route(); return; }
       case 'wfailnext': Sim3x3.failNext = !Sim3x3.failNext; route(); return;
       case 'wremove': if (confirm('Remove this routine from 3x3? Running jobs stop, and you will paste a webhook URL and routine key again.')) { Pages._w = {}; Store.saveConnection('worker', {status:'missing', url:null, last4:null, fp:null}); } return;
       case 'rotate': { const leak = !!a.dataset.leak;

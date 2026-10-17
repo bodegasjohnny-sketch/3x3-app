@@ -27,11 +27,13 @@
         shown once, stored by the user in their bot as THREEX3_SIGNING_SECRET.
         Social sign-ins: official OAuth in the user's browser -> tokens to Vault.
      1. dispatchJob() inserts a row in `jobs`.
-     2. A Supabase Edge Function (DB webhook on insert) signs the payload
-        server-side (HMAC-SHA256 over body + timestamp + nonce, using the
-        per-user worker secret) and POSTs it to the user's Grok Bot worker
-        webhook. The browser never signs or sees the secret.
-     3. The worker calls back (Edge Function endpoint, signature checked)
+     2. PLANNED (architecture v2.4 §2.1, not built; simulated here): a server
+        function signs the dispatch envelope with the app's Ed25519 private key
+        (Vault, never leaves the server) and POSTs it to the user's routine
+        webhook. The routine verifies it against a key set signed by an offline
+        root key pinned in the template. The browser never signs anything.
+     3. The routine calls back with envelopes signed (HMAC) with the per-user
+        signing secret THREEX3_SIGNING_SECRET (Edge Function checks it)
         to set status/output; the UI gets it through Realtime -> subscribe().
      4. Publish jobs never go to the bot: the server-side publish-broker checks
         the approval hash, bundle rules and quota, then posts via official APIs.
