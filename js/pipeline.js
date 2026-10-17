@@ -85,6 +85,7 @@
     approve(id, k){ const p = Store.getProject(id), st = p.stages[k];
       if (P.eff(p, k) !== 'awaiting' || !P.ready(p, k)) return;
       if (k === 'script') { const hits = M3.scriptBanned(st.output.beats, p.rules); if (hits.length) { P.log(p, 'Script not approved: it uses banned words (' + hits.join(', ') + '). Edit the lines or regenerate.'); return; }
+        const bd = M3.scriptBidi(st.output); if (bd.length) { P.log(p, 'Script not approved: ' + bd.length + ' line' + (bd.length > 1 ? 's contain' : ' contains') + ' hidden text-direction override or isolate characters (' + bd.map(b => b.b).join(', ') + '). Retype ' + (bd.length > 1 ? 'those lines' : 'that line') + ' without them and save, then approve.'); return; }
         const ph = M3.scriptPlaceholders(st.output); if (ph.length) { P.log(p, 'Script not approved: ' + ph.length + ' line' + (ph.length > 1 ? 's are' : ' is') + ' still placeholder template text or too short (' + ph.map(b => b.b + ': ' + M3.PLACEHOLDER_WHY[M3.placeholderWhy(st.output, b)]).join(', ') + '). Write your own lines and save, then approve.'); return; } }
       if (k === 'voice' && !M3.voInWindow(st.output.seconds, p.intake.dur) && !P.voOverridden(st)) { const [lo, hi] = M3.voWindow(p.intake.dur); P.log(p, `Voiceover not approved: ${st.output.seconds}s is outside the ${lo}–${hi}s window for a ${p.intake.dur}s video. Edit the script, redo lines, or tick the length override.`); return; }
       st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now()};
@@ -109,11 +110,11 @@
       else Store.saveProject(p); },
     /* Script edits before approval (the architecture lets the user edit; the diff is logged). Only while awaiting approval. */
     editScript(id, lines){ const p = Store.getProject(id), st = p.stages.script; if (P.eff(p, 'script') !== 'awaiting' || !st.output) return [];
-      const o = st.output, changed = [];
-      o.beats.forEach((b, i) => { const v = typeof lines[i] === 'string' ? lines[i].replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 400) : null; if (v && v !== b.line) { changed.push({beat:b.b, from:b.line, to:v}); b.line = v; } });
+      const o = st.output, changed = [], marks = [];   // LRM/RLM/ALM are stripped silently (logged)
+      o.beats.forEach((b, i) => { const v0 = typeof lines[i] === 'string' ? lines[i] : null, v = v0 === null ? null : M3.stripMarks(v0).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 400); if (v0 !== null && M3.stripMarks(v0) !== v0) marks.push(b.b); if (v && v !== b.line) { changed.push({beat:b.b, from:b.line, to:v}); b.line = v; } });
       if (!changed.length) return changed;
       o.edits = (o.edits || []).concat(changed.map(c => Object.assign({at:now()}, c))); const { hash, ...rest } = o; o.hash = M3.hash(rest);
-      P.log(p, `Script edited by you before approval: ${changed.map(c => c.beat).join(', ')} changed (output ${o.hash.slice(0,8)})`); return changed; },
+      P.log(p, `Script edited by you before approval: ${changed.map(c => c.beat).join(', ')} changed (output ${o.hash.slice(0,8)})${marks.length ? `; invisible direction marks (LRM/RLM/ALM) removed from ${marks.join(', ')}` : ''}`); return changed; },
     /* Voice length override: only for this exact take (output hash); a new take needs a new override */
     voOverridden(st){ return !!(st.lenOverride && st.output && st.lenOverride.hash === st.output.hash); },
     setVoOverride(id, on){ const p = Store.getProject(id), st = p.stages.voice; if (P.eff(p, 'voice') !== 'awaiting' || !st.output) return;

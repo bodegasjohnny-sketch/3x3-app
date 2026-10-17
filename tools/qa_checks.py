@@ -345,6 +345,17 @@ with sync_playwright() as p:
     put([hook_ok, '\u202e' + _rev('Guaranteed returns, risk-free.'), 'Number four: delete saved cards from shopping apps so checkout takes effort.', 'Number three: unfollow stores that flood your feed with flash sales.', 'Number two: set a weekly fun budget in cash and stick to it.', 'Number one: write down what you almost bought; most urges fade in a week.', tl[-1]])
     sbt = pl.inner_text('#stage-script')
     ok('qa6_rlo_reversed_banned_words_caught_in_ui', 'Banned words in the script' in sbt and 'guaranteed returns' in sbt and pl.is_disabled('#stage-script [data-x="approve"]'))
+    # spot-check 374d34b: a pasted LRM/RLM is stripped silently; overrides/isolates get their own heading
+    lines_m = list(base_ok_pre); lines_m[1] = '\u200e#5: some hold cash in a bank account.'
+    E(pl, f"(()=>{{const L={json.dumps(lines_m[:-1] + [tl[-1] + chr(0x200f)])};document.querySelectorAll('#stage-script textarea[data-beat]').forEach(t=>{{t.value=L[+t.dataset.beat]}})}})()")
+    pl.click('[data-x="savescript"]'); pl.wait_for_timeout(250)
+    stored = E(pl, f"Store.getProject('{lp}').stages.script.output.beats.map(b=>b.line)")
+    ok('qa7_lrm_rlm_paste_stripped_and_approvable', not pl.is_disabled('#stage-script [data-x="approve"]') and stored[1] == '#5: some hold cash in a bank account.' and stored[-1] == tl[-1]
+       and not any(c in ''.join(stored) for c in '\u200e\u200f\u061c') and pl.locator('#stage-script .phbox, #stage-script .bidibox').count() == 0 and 'direction marks (LRM/RLM/ALM) removed from #5' in E(pl, f"Store.getProject('{lp}').log[0].text"))
+    lines_b = list(base_ok_pre); lines_b[0] = '\u2067Impulse buys cost more than you think, so here are five habits.\u2069'
+    put(lines_b); ref = E(pl, f"(Pipeline.approve('{lp}','script'), Pipeline.eff(Store.getProject('{lp}'),'script'))")
+    ok('qa7_override_isolate_refused_with_own_heading', pl.is_disabled('#stage-script [data-x="approve"]') and ref == 'awaiting' and pl.locator('#stage-script .bidibox').count() == 1
+       and pl.locator('#stage-script .phbox').count() == 0 and 'hidden text-direction characters' in pl.inner_text('#stage-script .bidibox') and 'hidden text-direction override or isolate' in E(pl, f"Store.getProject('{lp}').log[0].text"))
     # genuine rewrites that the old word-share rule blocked must now pass (UI, one line at a time on top of a clean script)
     base_ok = ['Impulse buys cost more than you think, so here are five habits that stop them.', 'Number five: wait a full day before any purchase over a few hundred pesos.', 'Number four: delete saved cards from shopping apps so checkout takes effort.', 'Number three: unfollow stores that flood your feed with flash sales.', 'Number two: set a weekly fun budget in cash and stick to it.', 'Number one: write down what you almost bought; most urges fade in a week.', tl[-1]]
     for name, i, line in [('most_people_wrong_payday', 0, 'Most people get impulse spending wrong, and it costs them every payday.'), ('heres_what_actually_works', 0, "Here's what actually works to stop impulse spending."), ('item_try_today_cart', 1, '#5: One step you can try today: leave it in the cart for a day.')]:
@@ -477,6 +488,12 @@ with sync_playwright() as p:
     ok('qa6_extra_lookalikes_fold', E(pn, "M3.fold('\\u00f8\\u0275\\u0142\\u13eb\\ud83c\\uddf4')==='ooloo' && M3.normLine('one! $one point1 on3 Subscribe!')==='one one point 1 one subscribe'"))
     ok('qa6_three_distinct_fillers_documented_limit', '3 or more *different* filler words' in (Path(__file__).resolve().parent.parent / 'README.md').read_text())
     ok('qa6_readme_says_server_is_the_guarantee', 'The browser checks are advisory, not the guarantee' in (Path(__file__).resolve().parent.parent / 'README.md').read_text())
+    ok('qa7_marks_stripped_before_checks_unit', E(pn, """(()=>{const T='5 simple habits to stop impulse spending',L=M3.BEATS.list;return !M3.placeholderCheck('\\u200e#5: some hold cash in a bank account.',T,L).placeholder
+      && M3.placeholderCheck('\\u061cWait a day.\\u200f',T,L).why==='' && M3.lintBanned('risk\\u200f-free',['risk-free'],'').length===1 && M3.scriptBidi({beats:[{b:'CTA',line:'Follow for more\\u200f'}]}).length===0
+      && M3.scriptBidi({beats:[{b:'CTA',line:'\\u202eerom rof wolloF'}]}).length===1 && M3.placeholderCheck('\\u202aWait a day.\\u202c',T,L).why==='bidi'})()"""))
+    ok('qa7_sleep_on_it_and_caps_acronyms_pass_as_items', E(pn, """(()=>{const T='5 simple habits to stop impulse spending',L=M3.BEATS.list,P=(l,h)=>M3.placeholderCheck(l,T,L,null,h).placeholder;
+      return ['Sleep on it.','#5: Sleep on it.','Avoid BNPL.','Check SSS.','Skip TV.','Track BTC.'].every(l=>!P(l)) && ['Do it.','No.','Spend.','Spend it.','ok ok','ZXCV.','x'].every(l=>P(l)) && P('Sleep on it.',true) && P('Avoid BNPL.',true)})()"""))
+    ok('qa7_readme_corrected_sol_caps_and_short_lines', all(x in (Path(__file__).resolve().parent.parent / 'README.md').read_text() for x in ["ALL-CAPS titles ('HISTORY OF SOL'", "'Sleep on it.' passes as a beat line"]) and E(pn, "M3.topicBundles('HISTORY OF SOL').includes('crypto') && !M3.topicBundles('History of Sol').length"))
     import subprocess
     tracked = subprocess.run(['git', 'ls-files'], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent)).stdout
     ok('nit_no_pycache_committed', '__pycache__' not in tracked and '__pycache__' in (Path(__file__).resolve().parent.parent / '.gitignore').read_text())

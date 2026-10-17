@@ -65,7 +65,7 @@ M.stripDisclaimer = (text, disclaimer) => { let t = String(text || '');
    neighbours with nothing in between), and flag words the disclaimer itself doesn't contain. It can only ADD hits, so
    'guaranteed reNot financial adviceturns' and 'Crypto is high riskNot financial advice-free' are caught.
    Bidi controls are handled first: the text is checked as stored (controls stripped) AND as displayed (RLO runs reversed). */
-M.lintBanned = (text, banned, disclaimer) => { const B = banned || [], raw = String(text || ''), out = new Set();
+M.lintBanned = (text, banned, disclaimer) => { const B = banned || [], raw = M.stripMarks(text), out = new Set();
   const inDisc = new Set(M.bannedHits(String(disclaimer || ''), B)), S = M.discSentences(disclaimer), rx = x => new RegExp(x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
   (M.hasBidi(raw) ? [M.stripBidi(raw), M.visualBidi(raw)] : [raw]).forEach(t0 => {
     M.bannedHits(M.stripDisclaimer(t0, disclaimer), B).forEach(w => out.add(w));
@@ -74,7 +74,12 @@ M.lintBanned = (text, banned, disclaimer) => { const B = banned || [], raw = Str
   return B.filter(w => out.has(w)); };
 /* bidi controls (LRE RLE PDF LRO RLO, LRI RLI FSI PDI, LRM RLM ALM). visualBidi approximates what a reader sees: each RLO run (to PDF/PDI
    or the end of the line) is reversed, then every control is removed. Latin text inside RLE/RLI is not reversed by browsers, so only RLO is. */
-M.BIDI_RE = /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]/u;
+/* Bare direction MARKS (LRM U+200E, RLM U+200F, ALM U+061C) don't reorder Latin text and arrive with ordinary pastes (Messenger, Docs,
+   phones set to RTL languages): they are silently stripped on save and before every check. Embeddings, overrides and isolates
+   (U+202A-202E, U+2066-2069) are refused in script lines (hasBidi) with their own message. */
+M.BIDI_MARKS_RE = /[\u200E\u200F\u061C]/gu;
+M.stripMarks = t => String(t || '').replace(M.BIDI_MARKS_RE, '');
+M.BIDI_RE = /[\u202A-\u202E\u2066-\u2069]/u;
 M.hasBidi = t => M.BIDI_RE.test(String(t || ''));
 M.stripBidi = t => String(t || '').replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]/gu, '');
 M.visualBidi = t => M.stripBidi(String(t || '').split('\n').map(l => l.replace(/\u202E([^\u202C\u2069]*)/gu, (m, seg) => [...seg].reverse().join(''))).join('\n'));
@@ -124,15 +129,20 @@ const isMash = w => w.length >= 3 && KEYROWS.some(r => r.includes(w));
 const GAP = '\u0000', TMARK = 'qqtopicqq', LMARK = 'qqlabelqq', ilk = w => w.replace(/l/g, 'i');
 /* words that count as real: (a) letter words of 2+ chars that are not an English stop-word (STOPW above; Tagalog words like 'ka',
    'muna' count), not lorem or keyboard mash, and (for a-z words) contain a vowel, except Tagalog 'ng'/'mga'; (b) numbers, including
-   amounts like ₱500 or 20% (the symbol is dropped, the number counts). A leading beat label ('#5:', 'Clue 1:', 'Setup:') doesn't count.
-   At least one letter word is required. */
+   amounts like ₱500 or 20% (the symbol is dropped, the number counts); (c) all-consonant acronyms of 2-6 letters written in CAPS
+   (BNPL, SSS, TV, BTC), unless they're keyboard mash. A leading beat label ('#5:', 'Clue 1:', 'Setup:') doesn't count.
+   At least one letter word is required. A line with exactly one real word plus two or more stop-words ('Sleep on it.') counts as 2. */
 const NOVOWEL_OK = new Set(['ng', 'mga']);
 const stripLabel = (line, labels) => { let t = String(line || ''); const L = (labels || []).filter(Boolean).sort((a, b) => b.length - a.length);
   for (const b of L) { const r = new RegExp('^\\s*' + b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*') + '\\s*[:.)\\-\u2013\u2014]\\s*', 'i'); if (r.test(t)) return t.replace(r, ''); }
   return t.replace(/^\s*#\s*\d+\s*[:.)\-\u2013\u2014]?\s*/, ''); };
-M.realWords = (line, labels) => { const w = M.normLine(stripLabel(line, labels)).split(' ').filter(Boolean);
-  const lw = w.filter(x => /\p{L}/u.test(x) && [...x].length >= 2 && !STOPW.has(x) && !LOREM.has(x) && !isMash(x) && (!/^[a-z]+$/.test(x) || /[aeiouy]/.test(x) || NOVOWEL_OK.has(x)));
+M.realWords = (line, labels) => { const raw = stripLabel(M.stripMarks(line), labels), w = M.normLine(raw).split(' ').filter(Boolean);
+  const acr = new Set((raw.normalize('NFKC').match(/(?<![\p{L}\p{N}])[A-Z]{2,6}(?![\p{L}\p{N}])/gu) || []).map(x => x.toLowerCase()));
+  const lw = w.filter(x => /\p{L}/u.test(x) && [...x].length >= 2 && !STOPW.has(x) && !LOREM.has(x) && !isMash(x) && (!/^[a-z]+$/.test(x) || /[aeiouy]/.test(x) || NOVOWEL_OK.has(x) || acr.has(x)));
   if (!lw.length) return []; return [...new Set(lw.concat(w.filter(x => /^\p{N}+$/u.test(x))))]; };
+/* the count used for the minimum: real words, plus one when a single real word comes with 2+ stop-words ('Sleep on it.') */
+M.wordCount = (line, labels) => { const r = M.realWords(line, labels); if (r.length !== 1) return r.length;
+  const st = M.normLine(stripLabel(M.stripMarks(line), labels)).split(' ').filter(x => STOPW.has(x)).length; return st >= 2 ? 2 : 1; };
 M.isLorem = line => { const w = M.normLine(line).split(' '); return w.some(x => x === 'lorem' || x === 'ipsum') || w.filter(x => LOREM.has(x)).length >= 2; };
 /* content stream: stop-words and bare numbers dropped, keys with l->i; the topic (written in full) and the template topic/label slots become GAP */
 const stream = (text, topicKeys, labelKeys) => { let a = M.lineTokens(text).filter(w => !/^\p{N}+$/u.test(w)).map(w => (w === TMARK || w === LMARK) ? GAP : ilk(w));
@@ -151,12 +161,12 @@ const cmp = (line, skStr, topic, labels) => {
 /* full verdict for one line: {placeholder, why: 'bidi' | 'lorem' | 'too-short' | 'too-short-hook' | 'template' | '', share}.
    Lines containing any bidi control are rejected outright. The line is compared as typed and character-reversed (so a stored
    RLO-reversed template is caught even if the control was stripped). */
-M.placeholderCheck = (line, topic, labels, templates, hook) => {
+M.placeholderCheck = (line, topic, labels, templates, hook) => { line = M.stripMarks(line);
   if (M.hasBidi(line)) return {placeholder:true, why:'bidi', share:1};
   XVOCAB = new Set(M.normLine(topic || '').split(' ').filter(Boolean).map(w => w.replace(/l/g, 'i')));
   try {
     if (M.isLorem(line)) return {placeholder:true, why:'lorem', share:1};
-    if (M.realWords(line, labels).length < (hook ? M.MIN_LINE_WORDS : M.MIN_ITEM_WORDS)) return {placeholder:true, why:hook ? 'too-short-hook' : 'too-short', share:1};
+    if (M.wordCount(line, labels) < (hook ? M.MIN_LINE_WORDS : M.MIN_ITEM_WORDS)) return {placeholder:true, why:hook ? 'too-short-hook' : 'too-short', share:1};
     const T = topic || 'Your topic', sks = templates ? templates.map(x => String(x).split(T).join(TMARK).split(T.toLowerCase()).join(TMARK)) : M.TEMPLATE_SKELETONS();
     let best = 0, hit = false; [String(line || ''), [...String(line || '')].reverse().join('')].forEach(ln => sks.forEach(sk => { const r = cmp(ln, sk, T, labels); if (r.hit) hit = true; best = Math.max(best, r.hit ? 1 : r.bigram); }));
     return {placeholder:hit, why:hit ? 'template' : '', share:best};
@@ -165,10 +175,12 @@ M.placeholderCheck = (line, topic, labels, templates, hook) => {
 M.templateShare = (line, templates, topic) => { const T = topic || 'Your topic'; let best = 0;
   (templates && templates.length ? templates.map(x => String(x).split(T).join(TMARK).split(T.toLowerCase()).join(TMARK)) : M.TEMPLATE_SKELETONS()).forEach(sk => { const r = cmp(line, sk, T, []); best = Math.max(best, r.hit ? 1 : r.bigram); });
   return best; };
-M.PLACEHOLDER_WHY = {lorem:'lorem ipsum filler', 'too-short-hook':'needs ' + M.MIN_LINE_WORDS + '+ real words', 'too-short':'needs ' + M.MIN_ITEM_WORDS + '+ real words', template:'template text', bidi:'contains hidden text-direction characters'};
-/* hook + item lines that are still placeholders; the CTA (your own text) only fails if it contains bidi controls */
+M.PLACEHOLDER_WHY = {lorem:'lorem ipsum filler', 'too-short-hook':'needs ' + M.MIN_LINE_WORDS + '+ real words', 'too-short':'needs ' + M.MIN_ITEM_WORDS + '+ real words', template:'template text', bidi:'contains hidden text-direction override or isolate characters'};
+/* hook + item lines that are still placeholders, plus any line (CTA included) with an override/isolate control (why 'bidi').
+   The UI and the pipeline show the 'bidi' ones under their own heading; M.scriptBidi lists just those. */
 M.scriptPlaceholders = o => { const B = (o && o.beats) || [], labels = B.map(b => b.b);
-  return B.filter((b, i) => i < B.length - 1 ? M.placeholderCheck(b.line, o.topic, labels, null, i === 0).placeholder : M.hasBidi(b.line)); };
+  return B.filter((b, i) => i < B.length - 1 ? M.placeholderCheck(b.line, o.topic, labels, null, i === 0).placeholder : M.hasBidi(M.stripMarks(b.line))); };
+M.scriptBidi = o => ((o && o.beats) || []).filter(b => M.hasBidi(M.stripMarks(b.line)));
 M.placeholderWhy = (o, b) => { const B = (o && o.beats) || [], i = B.indexOf(b); return M.placeholderCheck(b.line, o && o.topic, B.map(x => x.b), null, i === 0).why; };
 /* connected channel/Page vs the project's brand: exact match after normalising (NFKC, format chars stripped, case, '(Page)', '@',
    punctuation, spaces). Lookalike letters are NOT folded here, so "Money Minute PН" with a Cyrillic Н is a mismatch. Anything else
@@ -342,7 +354,7 @@ M.topicText = I => (I && I.topic === -1 ? (I.ownTopic || '') : '');
 M.SOL_TICKER_RE = /(?<![\p{L}\p{N}])\$?SOL(?![\p{L}\p{N}])/u;
 M.SOL_RE = /(?:^|[^\p{L}\p{N}])sol(?![\p{L}\p{N}])/u;
 const SOL_CTX_RE = M.termRe(['price','staking','stake','buy','sell','chart','pump','coin','token','wallet','crypto','exchange','etf','trade','trading','hodl','airdrop','memecoin']);
-const bidiSplit = (text, f) => { const d = M.decodeEntities(String(text || '')); if (!M.hasBidi(d)) return f(d); const a = f(M.stripBidi(d)), b = f(M.visualBidi(d)); return [...new Set(a.concat(b))]; };
+const bidiSplit = (text, f) => { const d = M.stripMarks(M.decodeEntities(String(text || ''))); if (!M.hasBidi(d)) return f(d); const a = f(M.stripBidi(d)), b = f(M.visualBidi(d)); return [...new Set(a.concat(b))]; };
 M.topicBundles = text => bidiSplit(text, topicBundles1);
 const topicBundles1 = text => { const out = [], V = M.topicVariants(text);
   const solRaw = M.SOL_TICKER_RE.test(M.leet(String(text).normalize('NFKC')).replace(/[0]/g, 'O'));
