@@ -53,11 +53,36 @@ M.lintBanned = (text, banned, disclaimer) => { let t = String(text || '');
   const d = String(disclaimer || '').trim();
   if (d) [d].concat(d.split(/(?<=[.!?])\s+/).map(x => x.replace(/[.!?]+$/, '')).filter(x => x.length >= 8)).forEach(x => { t = t.replace(new RegExp(x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' '); });   // whole disclaimer, and each of its sentences
   return M.bannedHits(t, banned || []); };
-/* placeholder lines the simulator wrote and you haven't edited yet (the CTA is your own text) */
-M.scriptPlaceholders = beats => (beats || []).filter(b => b.tpl === true);
-/* does the connected channel/Page look like this project's brand? (simulated check; production compares the channel/Page id saved with the brand) */
-M.brandKey = v => String(v || '').toLowerCase().replace(/\(page\)/g, '').replace(/[^a-z0-9]+/g, '');
-M.brandMatches = (account, brand, handle) => { const a = M.brandKey(account); if (!a) return false; return [brand, handle].map(M.brandKey).filter(x => x.length >= 3).some(b => a.includes(b) || b.includes(a)); };
+/* ---------- script placeholder gate ----------
+   Simulated drafts use these template patterns (one per Regenerate draft, cycling). A hook or item line counts as a placeholder
+   until it is a real rewrite: after normalising (NFKC, zero-width/format chars stripped, confusables folded like the topic filter,
+   punctuation dropped, whitespace collapsed, lowercased), more than half of the content words of ANY template variant (any draft,
+   any beat) must be gone. Topic words and stop-words don't count, so reusing your own topic is fine. Decided from the saved text on
+   every render, save and Approve, never from a flag. The production server must re-run this same check before accepting Approval 1. */
+M.SCRIPT_HOOKS = [(T, t) => `"${T}": the version most people never hear.`, (T, t) => `Stop scrolling: ${t}, in under a minute.`, (T, t) => `Most people get this wrong: ${t}.`, (T, t) => `${T}? Here's what actually holds up.`, (T, t) => `You've been told the opposite. ${T}, explained.`];
+M.SCRIPT_ITEMS = [(b, t) => `${b}: one verifiable point about ${t}, with a plain-words example.`, (b, t) => `${b}: a specific, sourced fact on ${t} (one idea, one number at most).`, (b, t) => `${b}: a quick, checkable tip about ${t}, source shown on screen.`, (b, t) => `${b}: the common myth about ${t}, and what the source actually says.`, (b, t) => `${b}: one practical step for ${t} you can try today.`];
+M.scriptTemplates = (topic, labels) => { const T = topic || 'Your topic', t = T.toLowerCase(), L = labels || [];
+  return M.SCRIPT_HOOKS.map(f => f(T, t)).concat(...M.SCRIPT_ITEMS.map(f => L.map(b => f(b, t)))); };
+M.normLine = x => M.fold(String(x || '').replace(/[\p{Cf}\u00AD\u034F\u115F\u1160\u3164]/gu, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const STOPW = new Set('a an the and or of to in on at for with by is are be it its this that you your yours we our i my me as so do does not no'.split(' '));
+M.lineTokens = x => M.normLine(x).split(' ').filter(w => w && !STOPW.has(w));
+M.PLACEHOLDER_SHARE = 0.5;
+/* highest share of any template's content words still present in the line (0..1) */
+M.templateShare = (line, templates, topic) => { const own = new Set(M.lineTokens(topic)), have = new Set(M.lineTokens(line)); let best = 0;
+  (templates || []).forEach(tp => { const tk = [...new Set(M.lineTokens(tp))].filter(w => !own.has(w)); if (!tk.length) return; const sh = tk.filter(w => have.has(w)).length / tk.length; if (sh > best) best = sh; });
+  return best; };
+/* hook + item lines (not the CTA, which is your own text) that are still template text */
+M.scriptPlaceholders = o => { const B = (o && o.beats) || [], tps = M.scriptTemplates(o && o.topic, B.map(b => b.b));
+  return B.filter((b, i) => i < B.length - 1).filter(b => M.templateShare(b.line, tps, o.topic) > M.PLACEHOLDER_SHARE); };
+/* connected channel/Page vs the project's brand: exact match after normalising (NFKC, format chars stripped, case, '(Page)', '@',
+   punctuation, spaces). Lookalike letters are NOT folded here, so "Money Minute PН" with a Cyrillic Н is a mismatch. Anything else
+   warns. Production compares the channel/Page ID saved with the brand instead of names. */
+M.brandKey = v => String(v || '').normalize('NFKC').replace(/[\p{Cf}\u00AD]/gu, '').toLowerCase().replace(/\(page\)/g, '').replace(/^\s*@/, '').replace(/[^\p{L}\p{N}]+/gu, '');
+M.brandMatches = (account, brand, handle) => { const a = M.brandKey(account); if (!a) return false; return [brand, handle].map(M.brandKey).filter(Boolean).some(b => a === b); };
+/* Voice gate length window: spec format tolerance ±3 s around the target, checked on VO length */
+M.VO_TOL = 3;
+M.voWindow = dur => [Math.max(1, (+dur || 45) - M.VO_TOL), (+dur || 45) + M.VO_TOL];
+M.voInWindow = (sec, dur) => { const [lo, hi] = M.voWindow(dur); return sec >= lo && sec <= hi; };
 M.scriptBanned = (beats, rules) => { const sf = (rules && rules.safety) || {}; return M.lintBanned((beats || []).map(b => b.line).join('\n'), sf.banned_words, sf.disclaimer && sf.disclaimer.text); };
 M.STATUS = {
   idle:    ['Not started','mute'], running:['Running','cyan'], needs:['Needs you','warn'],
@@ -98,9 +123,10 @@ M.warnings = (I, conns) => {
     const st = conns[req.id] || {status:'missing'};
     if (M.isOk(st)) return;
     const c = M.conn(req.id);
-    const verb = st.status === 'relogin' ? 'needs a re-login for' : st.status === 'pending' ? 'is waiting on you for' : 'needs';
-    const label = st.status === 'relogin' || st.status === 'pending' ? c.n : M.connLabelMissing(req.id, st);
     const names = req.stages.map(s => M.stage(s).s);   // short names: 'Publish' (not 'Download') needs the sign-ins
+    const pl = req.id !== 'worker' && names.length > 1;   // "Stills & Video steps need", "Every AI step needs"
+    const verb = st.status === 'relogin' ? (pl ? 'need' : 'needs') + ' a re-login for' : st.status === 'pending' ? (pl ? 'are' : 'is') + ' waiting on you for' : (pl ? 'need' : 'needs');
+    const label = st.status === 'relogin' || st.status === 'pending' ? c.n : M.connLabelMissing(req.id, st);
     out.push({id:req.id, status:st.status || 'missing', stages:req.stages,
       text: (req.id === 'worker' ? 'Every AI step' : `${names.join(' & ')} step${names.length>1?'s':''}`) + ` ${verb} ${label}`,
       why: req.why.join('; ')});

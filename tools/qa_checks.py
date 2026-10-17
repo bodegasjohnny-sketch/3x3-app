@@ -22,7 +22,8 @@ with sync_playwright() as p:
             l = pg.locator(f'[data-x="simstatus"][data-c="{c}"][data-v="connected"]')
             if l.count(): l.first.click(); pg.wait_for_timeout(100)
         E(pg, "['youtube','facebook','tiktok','instagram'].forEach(c=>Store.saveConnection(c,{status:'connected',account:'@test'})); Store.saveConnection('worker',{status:'connected'})")
-    FILL = "(pid=>Pipeline.editScript(pid, Store.getProject(pid).stages.script.output.beats.map((b,i)=>b.tpl?('My own line '+(i+1)+': a plain, checkable point.'):b.line)))"
+    # real rewrites sized so the VO lands inside the ±3 s window (≈155 wpm), none of the template words
+    FILL = "(pid=>{const p=Store.getProject(pid),B=p.stages.script.output.beats,pace=+p.intake.pace||1,dur=p.intake.dur,V='keep receipts sorted weekly and compare totals before payday so every peso has a clear job'.split(' '),cta=B[B.length-1].line.split(/\\s+/).length,need=Math.max(4,Math.round(((dur-0.08-0.12*B.length)*155*pace/60-cta)/(B.length-1)));return Pipeline.editScript(pid,B.map((b,i)=>i<B.length-1?Array.from({length:need},(_,j)=>V[(j+i)%V.length]).join(' ')+'.':b.line))})"
     def fill(pg, pid): E(pg, f"{FILL}('{pid}')"); pg.wait_for_timeout(250)
     def lock(pg):
         hash(pg, '#/intake/8'); E(pg, "Intake.state.aiAck=true"); hash(pg, '#/intake/9'); E(pg, "Intake.rerender()")
@@ -191,7 +192,9 @@ with sync_playwright() as p:
     pa.click('[data-set="niche"][data-val="history_culture"]'); pa.wait_for_timeout(200); pa.click('[data-set="sub"][data-val="liquor_history"]'); pa.wait_for_timeout(200)
     E(pa, "Intake.state.plat={yt:true,fb:true,tt:false,ig:true}"); lock(pa); pa.click('[data-act="create"]'); pa.wait_for_timeout(600); pid2 = E(pa, "location.hash.split('/')[2]"); E(pa, "Sim3x3.speed=3")
     for k in ['script','voice','stills','final']:
-        wait(pa, pid2, k, ('awaiting',)); fill(pa, pid2) if k == 'script' else None; pa.locator(f'#stage-{k} [data-x="approve"]').click(); pa.wait_for_timeout(300)
+        wait(pa, pid2, k, ('awaiting',)); fill(pa, pid2) if k == 'script' else None
+        if k == 'voice': ok('qa3_in_window_vo_approvable', pa.locator('#stage-voice .volen.ok').count() == 1 and not pa.is_disabled('#stage-voice [data-x="approve"]'))
+        pa.locator(f'#stage-{k} [data-x="approve"]').click(); pa.wait_for_timeout(300)
     wait(pa, pid2, 'publish', ('needs',)); pa.locator('[data-x="queue"]').click(); wait(pa, pid2, 'publish', ('needs','done'))
     alog = E(pa, f"Store.getProject('{pid2}').log.map(l=>l.text).find(t=>t.startsWith('Alcohol bundle'))") or ''
     ok('alcohol_log_only_selected_platforms', 'TikTok' not in alog and 'YouTube uploaded private' in alog and 'Facebook and Instagram held by 3x3' in alog)
@@ -268,8 +271,41 @@ with sync_playwright() as p:
     E(pl, f"Pipeline.approve('{lp}','script')"); ok('qa_b_placeholder_refused_by_pipeline', E(pl, f"Pipeline.eff(Store.getProject('{lp}'),'script')") == 'awaiting' and 'placeholder template text' in E(pl, f"Store.getProject('{lp}').log[0].text"))
     pl.fill(f'#beat-{lp}-0', 'Impulse spending is a habit you can retrain.'); pl.click('[data-x="savescript"]'); pl.wait_for_timeout(300)
     ok('qa_b_partial_edit_still_blocked', pl.is_disabled('#stage-script [data-x="approve"]'))
-    fill(pl, lp); sc3 = E(pl, f"Store.getProject('{lp}').stages.script.output")
-    ok('qa_b_all_lines_edited_unlocks_approve', not pl.is_disabled('#stage-script [data-x="approve"]') and not any(b.get('tpl') for b in sc3['beats']))
+    dh = E(pl, f"Store.getProject('{lp}').stages.script.draftEdits||[]")
+    ok('nit_regenerate_keeps_earlier_draft_edits', len(dh) == 1 and dh[0]['draft'] == 1 and len(dh[0]['edits']) == 2 and dh[0]['edits'][0]['to'] == 'Number five: wait a day before you buy.' and 'Earlier drafts: 2 edits' in pl.inner_text('#stage-script'))
+    tl = E(pl, f"Store.getProject('{lp}').stages.script.output.beats.map(b=>b.line)")   # draft-2 template lines
+    d1 = [b['line'] for b in sc1['beats']]                                                 # draft-1 template lines
+    def put(lines):   # type into every hook/item textarea (CTA untouched), Save edits, report whether Approve is enabled
+        E(pl, f"(()=>{{const L={json.dumps(lines)};document.querySelectorAll('#stage-script textarea[data-beat]').forEach(t=>{{const i=+t.dataset.beat;if(i<L.length-1)t.value=L[i];}})}})()")
+        pl.click('[data-x="savescript"]'); pl.wait_for_timeout(250)
+        return not pl.is_disabled('#stage-script [data-x="approve"]')
+    def mod(f): return [f(x) for x in tl[:-1]] + [tl[-1]]
+    import re as _re
+    BYP = {
+        'double_space': mod(lambda x: x.replace(' ', '  ', 1)),
+        'nbsp': mod(lambda x: x.replace(' ', '\u00a0', 1)),
+        'one_char_changed': mod(lambda x: x[:-1] + '!' if x.endswith('.') else x + '!'),
+        'period_dropped': mod(lambda x: x.rstrip('.')),
+        'one_letter_added': mod(lambda x: x.replace('one', 'onee', 1) if 'one' in x else x + 's'),
+        'all_caps': mod(lambda x: x.upper()),
+        'zero_width_space': mod(lambda x: x.replace(' ', ' \u200b', 2).replace('o', 'o\u200b', 1)),
+        'zwj': mod(lambda x: x.replace('e', 'e\u200d', 2)),
+        'cyrillic_o': mod(lambda x: x.replace('o', '\u043e')),
+        'template_plus_text': mod(lambda x: x + ' Okay.'),
+        'other_draft_template': d1[:-1] + [tl[-1]],
+    }
+    for name, lines in BYP.items():
+        en = put(lines); ref = E(pl, f"(Pipeline.approve('{lp}','script'), Pipeline.eff(Store.getProject('{lp}'),'script'))")
+        ok(f'qa_bypass_{name}_blocked', en is False and ref == 'awaiting')
+    real = ['Impulse buys cost more than you think, so here are five habits that stop them.', 'Number five: wait a full day before any purchase over a few hundred pesos.', 'Number four: delete saved cards from shopping apps so checkout takes effort.', 'Number three: unfollow stores that flood your feed with flash sales.', 'Number two: set a weekly fun budget in cash and stick to it.', 'Number one: write down what you almost bought; most urges fade in a week.', tl[-1]]
+    ok('qa_b_real_rewrite_unlocks_approve', put(real) is True)
+    ok('qa_bypass_edit_then_revert_blocked', put(tl) is False and E(pl, f"(Pipeline.approve('{lp}','script'), Pipeline.eff(Store.getProject('{lp}'),'script'))") == 'awaiting')
+    ok('qa_b_gate_checks_every_variant_unit', E(pl, """(()=>{const T='5 simple habits to stop impulse spending',L=M3.BEATS.list;const all=M3.scriptTemplates(T,L);
+        return [1,2,3,4,5].every(v=>{const B=L.map((b,i)=>({b,line:i===0?M3.SCRIPT_HOOKS[v-1](T,T.toLowerCase()):i===L.length-1?'Follow for more':M3.SCRIPT_ITEMS[v-1](b,T.toLowerCase())}));return M3.scriptPlaceholders({topic:T,beats:B}).length===6})
+          && M3.templateShare('Number five: wait a full day before any purchase.',all,T)<=M3.PLACEHOLDER_SHARE})()"""))
+    shortl = ['Impulse buys add up fast.', 'Wait one day first.', 'Delete saved cards.', 'Unfollow flash-sale stores.', 'Use a cash fun budget.', 'Write down near-buys.', tl[-1]]
+    put(shortl); sc3 = E(pl, f"Store.getProject('{lp}').stages.script.output")
+    ok('qa_b_all_lines_edited_unlocks_approve', not pl.is_disabled('#stage-script [data-x="approve"]') and E(pl, f"M3.scriptPlaceholders(Store.getProject('{lp}').stages.script.output).length") == 0)
     pl.click('#stage-script [data-x="approve"]'); pl.wait_for_timeout(300)
     vs = wait(pl, lp, 'voice', ('awaiting','done'))
     vo = E(pl, f"Store.getProject('{lp}').stages.voice.output"); sct = ' '.join(b['line'] for b in sc3['beats'])
@@ -282,12 +318,32 @@ with sync_playwright() as p:
     E(pl, "App.lastSample=null"); pl.click('#stage-voice [data-x="sayline"][data-i="1"]'); pl.wait_for_timeout(150)
     ok('lr12_voice_line_plays_sample', E(pl, f"!!App.lastSample && App.lastSample.text===Store.getProject('{lp}').stages.voice.output.lines[1].text"))
     ok('lr13_stills_wait_for_voice_approval', E(pl, f"Store.getProject('{lp}').stages.stills.status") == 'idle')
+    vsec = E(pl, f"Store.getProject('{lp}').stages.voice.output.seconds")
+    ok('qa3_short_vo_warns_and_blocks', vsec < 42 and '42–48s window' in pl.inner_text('#stage-voice .volen') and pl.is_disabled('#stage-voice [data-x="approve"]'))
+    E(pl, f"Pipeline.approve('{lp}','voice')"); ok('qa3_short_vo_refused_by_pipeline', E(pl, f"Pipeline.eff(Store.getProject('{lp}'),'voice')") == 'awaiting' and 'outside the 42–48s window' in E(pl, f"Store.getProject('{lp}').log[0].text"))
+    axe_on(pl, 'project-voice-length-warning')
+    pl.check('#stage-voice [data-x="vooverride"]'); pl.wait_for_timeout(250)
+    ok('qa3_explicit_override_enables_approve', not pl.is_disabled('#stage-voice [data-x="approve"]') and 'length override by you' in E(pl, f"Store.getProject('{lp}').log[0].text"))
+    pl.click('#stage-voice [data-x="redoline"][data-i="2"]'); pl.wait_for_timeout(250)
+    ok('qa3_override_is_per_take', pl.is_disabled('#stage-voice [data-x="approve"]'))
+    pl.check('#stage-voice [data-x="vooverride"]'); pl.wait_for_timeout(250)
     pl.click('#stage-voice [data-x="approve"]'); pl.wait_for_timeout(300)
+    ok('qa3_override_recorded_on_approval', E(pl, f"Store.getProject('{lp}').stages.voice.approval.length_override.seconds") == vsec)
+    ok('qa3_window_unit', E(pl, "JSON.stringify(M3.voWindow(45))==='[42,48]' && M3.voInWindow(42,45) && M3.voInWindow(48,45) && !M3.voInWindow(41.9,45) && !M3.voInWindow(48.1,45) && JSON.stringify(M3.voWindow(30))==='[27,33]'"))
     wait(pl, lp, 'stills', ('awaiting',)); pl.locator('#stage-stills [data-x="approve"]').click(); pl.wait_for_timeout(300)
     wait(pl, lp, 'final', ('awaiting',)); fo = E(pl, f"Store.getProject('{lp}').stages.final.output")
     ok('qa_c_video_has_no_gate', E(pl, f"Store.getProject('{lp}').stages.video.status") == 'done' and pl.locator('#stage-video [data-x="approve"]').count() == 0 and 'Clip preview' in pl.inner_text('#stage-final'))
     ft = pl.inner_text('#stage-final')
     ok('qa_d_final_values_labelled_targets', 'Loudness target' in ft and 'Target length' in ft and 'not measured' in ft.lower() and fo.get('measured') is False and 'lufs' not in fo)
+    vf = pl.inner_text('#stage-final .volenfinal')
+    ok('qa3_final_shows_actual_vo_length', f'{vsec}s' in vf and 'outside 42–48s' in vf and 'overridden by you' in vf and 'Target length' in ft)
+    axe_on(pl, 'project-final-card'); pl.set_viewport_size({'width': 390, 'height': 844}); pl.wait_for_timeout(300); axe_on(pl, 'project-final-card-390')
+    cc = E(pl, """(()=>{const el=document.querySelector('#stage-final .pcap'),cs=getComputedStyle(el);const rgb=s=>s.match(/[\\d.]+/g).map(Number);
+      const L=c=>{const [r,g,b]=c.slice(0,3).map(v=>{v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4)});return 0.2126*r+0.7152*g+0.0722*b};
+      const fg=rgb(cs.color),bg=rgb(cs.backgroundColor),a=bg[3]===undefined?1:bg[3],base=[255,255,255];const mix=bg.slice(0,3).map((v,i)=>v*a+base[i]*(1-a));
+      const l1=L(fg),l2=L(mix);return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05)})()""")
+    pl.set_viewport_size({'width': 1440, 'height': 900}); pl.wait_for_timeout(300)
+    ok('qa4_final_caption_contrast_at_least_4_5', cc >= 4.5)
     ok('lr02_final_includes_locked_disclaimer', any(l.startswith('Disclaimer') and disc in l for l in fo['labels']) and disc in pl.inner_text('#stage-final .fdisc'))
     pl.locator('#stage-final [data-x="approve"]').click(); wait(pl, lp, 'publish', ('needs',)); pl.wait_for_timeout(500)
     pt = E(pl, "document.getElementById('stage-publish').innerText")
@@ -319,6 +375,22 @@ with sync_playwright() as p:
     E(pq, "(()=>{const r=['photoreal_macro','archival_doc','photoreal','cinematic'];Intake.state.style=RS_DATA.styles.find(x=>r.includes(x.id)).id})()"); E(pq, "Intake.state.aiLabel='auto'; Intake.rerender()"); pq.wait_for_timeout(150)
     ok('qa_e_auto_on_for_photoreal_style', E(pq, "Intake.aiOn()") and 'realistic style' in pq.inner_text('#aireason'))
     axe_on(pq, 'intake8-ai-label-auto'); pq.close()
+    # spot-check 9ecdbc4: brand exact match, nits
+    pn = page(); hash(pn, '#/intake/3', 500)
+    bm = E(pn, """(()=>{const B='Money Minute PH',H='@moneyminuteph',f=a=>M3.brandMatches(a,B,H);
+      return {miss:['M','PH','Minute','Money Minute','@moneyminute','Money Minute PHL','Money Minute PH Official Fan Copy','Money Minute P\u041d','Money Minute PН','Healthy Bites PH'].filter(f),
+              hit:['Money Minute PH','money minute ph','Money  Minute PH','Money Minute PH (Page)','\uff2doney Minute PH','Money\u200b Minute PH','@moneyminuteph'].filter(a=>!f(a))}})()""")
+    ok('qa2_brand_mismatch_warns_unless_exact', bm['miss'] == [] and bm['hit'] == [])
+    ok('nit_list_tile_says_cta_not_payoff', 'payoff' not in pn.inner_text('[data-set="format"][data-val="list"]') and '→ CTA' in pn.inner_text('[data-set="format"][data-val="list"]'))
+    ok('nit_steps_need_grammar', E(pn, "(()=>{const t=M3.warnings({plat:{},vo:true,style:'photoreal'},{}).map(w=>w.text);return t.some(x=>/steps need /.test(x))&&!t.some(x=>/steps needs|steps is waiting/.test(x))})()"))
+    ok('nit_spelled_counts_dropped_for_list', E(pn, "JSON.stringify(Intake.fitSeeds(['Seven habits of savers','Top seven tips for rent','Three money mistakes','Five habits of savers','5 habits of savers','Tracking spending for a week'],'list',45))") == json.dumps(['Five habits of savers','5 habits of savers','Tracking spending for a week'], separators=(',',':')))
+    ok('nit_finance_numbers_dropped', E(pn, "JSON.stringify(Intake.fitSeeds(['Build a 3–6 months emergency fund','Save ₱25,000 in a year','Envelope method in 30 seconds','5 habits of savers','Cut 20% of spending'],'list',45,true))") == json.dumps(['Envelope method in 45 seconds','5 habits of savers'], ensure_ascii=False, separators=(',',':')))
+    finbad = E(pn, """(()=>{const bad=[];RS_DATA.cats.forEach(c=>c.subs.forEach(s=>{if(!(s.bundles||[]).some(b=>b==='finance'||b==='crypto'))return;['list','story','reveal'].forEach(f=>Intake.fitSeeds(s.seeds,f,45,true).forEach(t=>{const r=t.replace(/\\bin \\d+ seconds?\\b/gi,'').replace(f==='list'?/^(?:top\\s+)?5\\s+/i:/^$/,'');if(/[\\d₱$€£%]/.test(r))bad.push(t)}))}));return bad})()""")
+    ok('nit_finance_suggestions_have_no_unsourced_numbers', finbad == [])
+    import subprocess
+    tracked = subprocess.run(['git', 'ls-files'], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent)).stdout
+    ok('nit_no_pycache_committed', '__pycache__' not in tracked and '__pycache__' in (Path(__file__).resolve().parent.parent / '.gitignore').read_text())
+    pn.close()
     # (5) stuck routine reset card
     ps = page(); hash(ps, '#/connections', 500)
     ok('stuck_card_hidden_by_default', ps.locator('#conn-stuck').count() == 0)

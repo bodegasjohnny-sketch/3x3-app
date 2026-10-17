@@ -34,13 +34,11 @@
           /* simulated draft: each draft (version) uses a different hook and line pattern, so Regenerate really changes the text */
           const topic = p.topic || 'Your topic', v = (p.version || 1), beats = M3.BEATS[I.format] || M3.BEATS.story;
           const per = Math.round(words / beats.length), t = topic.toLowerCase();
-          const HOOK = [`"${topic}": the version most people never hear.`, `Stop scrolling: ${t}, in under a minute.`, `Most people get this wrong: ${t}.`, `${topic}? Here's what actually holds up.`, `You've been told the opposite. ${topic}, explained.`];
-          const ITEM = [b => `${b}: one verifiable point about ${t}, with a plain-words example.`, b => `${b}: a specific, sourced fact on ${t} (one idea, one number at most).`, b => `${b}: a quick, checkable tip about ${t}, source shown on screen.`, b => `${b}: the common myth about ${t}, and what the source actually says.`, b => `${b}: one practical step for ${t} you can try today.`];
-          const h = HOOK[(v - 1) % HOOK.length], it = ITEM[(v - 1) % ITEM.length];
+          const HOOK = M3.SCRIPT_HOOKS, ITEM = M3.SCRIPT_ITEMS;   // shared with the placeholder gate (M3.scriptPlaceholders)
+          const h = HOOK[(v - 1) % HOOK.length](topic, t), it = b => ITEM[(v - 1) % ITEM.length](b, t);
           return {topic, words, draft:v, variant:((v - 1) % HOOK.length) + 1, per_beat:per, beats: beats.map((b,i) => ({b,
             line: i === 0 ? h : i === beats.length-1 ? (I.cta || 'Follow for more') + (I.goal === 'affiliate' ? ' · link in bio (#ad)' : '') : it(b),
-            src: (i === 0 || i === beats.length-1) ? null : 'source URL attached by worker',
-            tpl: i !== beats.length-1}))};   // placeholder text: you must rewrite hook + items before Approval 1 (CTA is yours already)
+            src: (i === 0 || i === beats.length-1) ? null : 'source URL attached by worker'}))};   // template text: hook + items must be rewritten before Approval 1 (decided from content by M3.scriptPlaceholders)
         }
         case 'voice': {
           /* voice take built from the approved script: one line per beat, timed at ~155 wpm x pace (timings.json is the master clock) */

@@ -334,3 +334,7 @@ pre.json:focus-visible{outline:2px solid #00C2FF;outline-offset:2px}
 .beatedit.tpl{border-style:dashed}
 .brandwarn{margin-top:6px}
 .tgtnote{font-size:12px}
+/* Final card phone mock-up: caption on a dark plate so it reads on any style background (≥ 4.5:1) */
+.finalart .pcap{color:#FFFFFF;background:rgba(11,15,26,.88);padding:4px 6px;border-radius:6px;text-shadow:none}
+.finalart .pcap .paff{color:#FFE08A}
+.drafthist summary{cursor:pointer;color:var(--mute,#9aa3b2)}

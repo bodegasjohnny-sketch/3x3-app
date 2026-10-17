@@ -1,1 +1,3 @@
 https-watch.log
+__pycache__/
+*.pyc

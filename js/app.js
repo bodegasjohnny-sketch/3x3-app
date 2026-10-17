@@ -117,6 +117,7 @@
       case 'resetspend': Store.resetSpend(); App.toast('Simulated: new day, spend reset to $0'); Pipeline.retry(id, k); return;
       case 'download': Pipeline.download(id); return;
       case 'savescript': { const ls = [...document.querySelectorAll('#stage-script textarea[data-beat]')].sort((x, y) => x.dataset.beat - y.dataset.beat).map(t => t.value); const ch = Pipeline.editScript(id, ls); App.toast(ch.length ? `Saved: ${ch.length} line${ch.length > 1 ? 's' : ''} edited (logged)` : 'No changes to save'); return; }
+      case 'vooverride': Pipeline.setVoOverride(id, !!a.checked); return;
       case 'redoline': Pipeline.redoLine(id, +a.dataset.i); return;
       case 'sayline': { const p = Store.getProject(id), l = ((p.stages.voice.output || {}).lines || [])[+a.dataset.i]; if (l) { const r = App.say(l.text, p.intake.pace); if (!r) App.toast('Audio playback isn\'t available in this browser (simulator)', 'err'); } return; }
       case 'reset': Pipeline.reset(id); return;

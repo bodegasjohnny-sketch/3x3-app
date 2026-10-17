@@ -62,7 +62,7 @@ with sync_playwright() as p:
     wait_for('script', 'awaiting'); shot('15-project-script-approval', True)
     for k in ['script','voice','stills','final']:
         wait_for(k, 'awaiting')
-        if k == 'script': pg.evaluate("(pid=>Pipeline.editScript(pid, Store.getProject(pid).stages.script.output.beats.map((b,i)=>b.tpl?('My own line '+(i+1)+': a plain, checkable point.'):b.line)))('"+pid+"')"); pg.wait_for_timeout(300)
+        if k == 'script': pg.evaluate("("+"(pid=>{const p=Store.getProject(pid),B=p.stages.script.output.beats,pace=+p.intake.pace||1,dur=p.intake.dur,V='keep receipts sorted weekly and compare totals before payday so every peso has a clear job'.split(' '),cta=B[B.length-1].line.split(/\\s+/).length,need=Math.max(4,Math.round(((dur-0.08-0.12*B.length)*155*pace/60-cta)/(B.length-1)));return Pipeline.editScript(pid,B.map((b,i)=>i<B.length-1?Array.from({length:need},(_,j)=>V[(j+i)%V.length]).join(' ')+'.':b.line))})"+")('"+pid+"')"); pg.wait_for_timeout(300)
         pg.click(f'[data-x="approve"][data-k="{k}"]'); pg.wait_for_timeout(300); L('approved', k)
         if k == 'stills': pass
     wait_for('publish', 'needs'); shot('16-project-publish-choice', True)
