@@ -30,8 +30,8 @@
      2. PLANNED (architecture v2.4 §2.1, not built; simulated here): a server
         function signs the dispatch envelope with the app's Ed25519 private key
         (Vault, never leaves the server) and POSTs it to the user's routine
-        webhook. The routine verifies it against a key set signed by an offline
-        root key pinned in the template. The browser never signs anything.
+        webhook. The routine verifies it against a key set signed by two offline
+        3x3 root keys (a primary and a backup) built into the template. The browser never signs anything.
      3. The routine calls back with envelopes signed (HMAC) with the per-user
         signing secret THREEX3_SIGNING_SECRET (Edge Function checks it)
         to set status/output; the UI gets it through Realtime -> subscribe().
