@@ -84,7 +84,7 @@
     fbPageCheck(id, on){ const p = Store.getProject(id), g = p.stages.publish.ageGate; if (!g || g.confirmed.fb) return; g.fbPageChecked = on ? now() : null; Store.saveProject(p); },
     confirmAgeGate(id, plat, outcome){ const p = Store.getProject(id), st = p.stages.publish, g = st.ageGate; if (!g || !g.plats.includes(plat) || g.confirmed[plat]) return;
       if (plat === 'fb' && outcome === 'age_restricted' && !g.fbPageChecked) return;   // the Page age restriction is checked BEFORE answering
-      const am = M3.ageMin(p.intake.market), call = M3.confirm_age_gate('pub_' + st.jobId + '_' + plat, plat, (p.stages.final.output || {}).hash || null, 'alcohol-v2.7', outcome);
+      const am = M3.ageMin(p.intake.market), call = M3.confirm_age_gate('pub_' + st.jobId + '_' + plat, plat, (p.stages.final.output || {}).hash || null, M3.AGE_GATE_TEXT_VERSION, outcome);
       if (plat === 'fb' && outcome === 'age_restricted') { call.age_min = am; call.page_check_at = g.fbPageChecked; }
       g.confirmed[plat] = call; const r = (st.output.results || []).find(x => x.plat === plat);
       if (r) r.mode = (outcome === 'kept_private' ? M3.ALCOHOL_KEPT[plat] : M3.ALCOHOL_AFTER[plat]).replace('{age}', am);

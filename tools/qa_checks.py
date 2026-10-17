@@ -100,7 +100,14 @@ with sync_playwright() as p:
     ok('alcohol_fb_server_publish_age_min_ai_flag', 'age_min=18' in after['fb'] and 'is_ai_generated=true' in after['fb'] and after['call']['page_check_at'])
     # (2) YouTube copy: stays private, never told to publish
     yt_copy = E(pg, "M3.ALCOHOL_STEPS.yt + ' ' + M3.ALCOHOL_AFTER.yt + ' ' + M3.ALCOHOL_YT")
-    ok('alcohol_yt_copy_never_publish', 'stays private' in yt_copy and 'never makes alcohol public' in yt_copy and 'publish it in YouTube' not in yt_copy and 'publish in YouTube Studio' not in yt_copy)
+    ok('alcohol_yt_copy_v28_leaves_private', '3x3 leaves it private; visibility is your decision' in yt_copy and 'it stays private' not in yt_copy and 'publish it in YouTube' not in yt_copy and 'publish in YouTube Studio' not in yt_copy)
+    ok('confirm_age_gate_text_version_m4_seed', after['call']['args'][3] == 'agt_2026_10_v1')
+    tt_copy = E(pg, "[M3.ALCOHOL_STEPS.tt, M3.ALCOHOL_KEPT.tt, M3.ALCOHOL_AFTER.tt, M3.ALCOHOL_YT, M3.PUBLISH_NOTE].join(' || ')")
+    card = pg.inner_text('#stage-publish')
+    ok('alcohol_tt_copy_v28', 'Only me' not in tt_copy and 'Only me' not in card and 'your choice' in E(pg, "M3.ALCOHOL_STEPS.tt") and "don't post the draft (or delete it)" in E(pg, "M3.ALCOHOL_STEPS.tt")
+       and 'unposted or deleted' in E(pg, "M3.ALCOHOL_KEPT.tt") and 'set Audience controls 18+ first, then choose the visibility yourself' in E(pg, "M3.ALCOHOL_YT"))
+    ok('alcohol_tt_steps_from_v28_pack', E(pg, "RS_DATA.bundles.alcohol.publishing.manual_steps.tiktok === M3.ALCOHOL_STEPS.tt && M3.ALCOHOL_STEPS.tt.includes('Once 18+ is set, who can view the post is your choice')"))
+    ok('alcohol_never_tells_user_make_public', not any(x in (tt_copy + ' ' + yt_copy + ' ' + card).lower() for x in ['make it public','set it to public','post it to everyone','set who can view to everyone']))
     # (4) kept_private passes the 5th arg; (1) keep private exists for FB/IG and sends nothing
     pg.click('[data-x="agekeep"][data-p="ig"]'); pg.wait_for_timeout(250)
     ig = E(pg, f"(()=>{{const st=Store.getProject('{pid}').stages.publish;return {{mode:st.output.results.find(r=>r.plat==='ig').mode, call:st.ageGate.confirmed.ig}}}})()")
