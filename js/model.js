@@ -85,7 +85,8 @@ M.stripBidi = t => String(t || '').replace(/[\u202A-\u202E\u2066-\u2069\u200E\u2
 M.visualBidi = t => M.stripBidi(String(t || '').split('\n').map(l => l.replace(/\u202E([^\u202C\u2069]*)/gu, (m, seg) => [...seg].reverse().join(''))).join('\n'));
 /* ---------- script placeholder gate (ADVISORY: the server re-checks every line before Approval 1 and before publish) ----------
    Simulated drafts use these template patterns (one per Regenerate draft, cycling). A hook or item line is a placeholder when:
-   (0) it contains any bidi control (U+202A-202E, U+2066-2069, LRM, RLM, ALM): refused outright (the CTA too);
+   (0) it contains a bidi embedding, override or isolate (U+202A-202E, U+2066-2069): refused outright (the CTA too); the bare marks
+       LRM, RLM and ALM are not refused: stripMarks removes them on save and before every check;
    (1) it is lorem-ipsum filler, or it has too few real words: 3 for the hook, 2 for every other beat line. Real words = letter words of
        2+ chars that aren't English stop-words, lorem or keyboard mash, plus numbers/amounts (₱500, 20%); a leading beat label ('#5:')
        doesn't count and at least one letter word is needed; or
