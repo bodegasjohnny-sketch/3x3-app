@@ -76,20 +76,20 @@
       P.log(p, `${M3.stage(k).n} approved · lock ${M3.hash([st.inputHash, st.output.hash]).slice(0,8)}`);
       const n = P.nextKey(p, k); if (n && p.stages[n].status === 'idle') P.start(p, n);
     },
-    /* Simulates the RPC confirm_age_gate(publish_id, platform, file_hash, text_version): single-use, per post and per platform, logged.
-       how: 'confirm' | 'keep_private' (YouTube/TikTok only: 18+ not available or not confirmed -> stays private forever) */
-    ageResolved(g, x){ return !!g.confirmed[x] && (x !== 'fb' || !!g.fbChecked); },
-    confirmAgeGate(id, plat, how){ const p = Store.getProject(id), st = p.stages.publish, g = st.ageGate; if (!g || !g.plats.includes(plat) || g.confirmed[plat]) return;
-      if (how === 'keep_private' && !['yt','tt'].includes(plat)) return;
-      const call = {rpc:'confirm_age_gate', publish_id:'pub_' + st.jobId + '_' + plat, platform:plat, decision:how === 'keep_private' ? 'keep_private' : 'age_gate_confirmed', file_hash:(p.stages.final.output || {}).hash || null, text_version:'alcohol-v2.6', at:now(), simulated:true};
-      g.confirmed[plat] = call; const r = (st.output.results || []).find(x => x.plat === plat); if (r) r.mode = how === 'keep_private' ? M3.ALCOHOL_KEPT[plat] : M3.ALCOHOL_AFTER[plat];
-      P.log(p, `confirm_age_gate (simulated): ${plat.toUpperCase()} ${how === 'keep_private' ? 'kept private, never made public' : 'post confirmed'} · ${call.publish_id}` + (plat === 'fb' ? ' · server published with targeting.age_min=18, is_ai_generated=true; check 18+ in Facebook' : plat === 'ig' ? ' · server published the Reel' : ''));
+    /* Each answer calls the (simulated) RPC confirm_age_gate(publish_id, platform, file_hash, text_version, outcome).
+       outcome 'age_restricted' | 'kept_private'. kept_private is final; for Facebook/Instagram it means nothing is ever sent. */
+    ageResolved(g, x){ return !!g.confirmed[x]; },
+    fbPageCheck(id, on){ const p = Store.getProject(id), g = p.stages.publish.ageGate; if (!g || g.confirmed.fb) return; g.fbPageChecked = on ? now() : null; Store.saveProject(p); },
+    confirmAgeGate(id, plat, outcome){ const p = Store.getProject(id), st = p.stages.publish, g = st.ageGate; if (!g || !g.plats.includes(plat) || g.confirmed[plat]) return;
+      if (plat === 'fb' && outcome === 'age_restricted' && !g.fbPageChecked) return;   // the Page age restriction is checked BEFORE answering
+      const am = M3.ageMin(p.intake.market), call = M3.confirm_age_gate('pub_' + st.jobId + '_' + plat, plat, (p.stages.final.output || {}).hash || null, 'alcohol-v2.7', outcome);
+      if (plat === 'fb' && outcome === 'age_restricted') { call.age_min = am; call.page_check_at = g.fbPageChecked; }
+      g.confirmed[plat] = call; const r = (st.output.results || []).find(x => x.plat === plat);
+      if (r) r.mode = (outcome === 'kept_private' ? M3.ALCOHOL_KEPT[plat] : M3.ALCOHOL_AFTER[plat]).replace('{age}', am);
+      P.log(p, `confirm_age_gate (simulated): ${plat.toUpperCase()} → ${outcome}` + (outcome === 'kept_private' ? (['fb','ig'].includes(plat) ? ' · nothing sent' : ' · stays private') : plat === 'fb' ? ` · server published with targeting.age_min=${am}, is_ai_generated=true` : plat === 'ig' ? ' · server published the Reel' : ''));
       P.ageDone(p); },
-    fbAgeCheck(id){ const p = Store.getProject(id), st = p.stages.publish, g = st.ageGate; if (!g || !g.confirmed.fb || g.fbChecked) return;
-      g.fbChecked = now(); const r = (st.output.results || []).find(x => x.plat === 'fb'); if (r) r.mode = M3.ALCOHOL_FB_CHECKED;
-      P.log(p, 'Facebook: you checked that the 18+ age restriction is applied'); P.ageDone(p); },
     ageDone(p){ const st = p.stages.publish, g = st.ageGate;
-      if (g.plats.every(x => P.ageResolved(g, x))) { st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), age_gate:g.confirmed, fb_age_checked:g.fbChecked || null}; P.log(p, 'Every alcohol post resolved'); }
+      if (g.plats.every(x => P.ageResolved(g, x))) { st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), age_gate:g.confirmed}; P.log(p, 'Every alcohol post answered'); }
       else Store.saveProject(p); },
     regenerate(id, k){ const p = Store.getProject(id); P.log(p, `${M3.stage(k).n}: regenerate requested`); P.start(p, k); },
     swap(id, i){ const p = Store.getProject(id); if (!p.stages.stills.output) return; P.start(p, 'stills', {swap:i}); },

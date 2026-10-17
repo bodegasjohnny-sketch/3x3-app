@@ -189,7 +189,7 @@ const S = {step:1,max:1,goal:REAL?'fb_monetization':'facebook',niche:REAL?'healt
   capStyle:'chunk3',capPos:'lower',counter:true,music:'Upbeat acoustic',sfx:'Med',
   banned:REAL?['cure','treat','prevent','heal','detox','miracle','guaranteed']:['cure','treat','prevent','detox'],disclaimer:true,cite:true,plat:{yt:true,fb:true,tt:false,ig:true},
   acc:true,locked:false,locking:false,topic:0,
-  vo:true,aiAck:false,aiTag:true,kids:false,noClaims:false,ownTopic:'',ackErr:false,projectId:null,compAck:false,version:1,versions:[],cap:20};
+  vo:true,aiAck:false,aiTag:true,kids:false,noClaims:false,ownTopic:'',ackErr:false,projectId:null,compAck:false,version:1,versions:[],cap:20,market:'PH'};
 const S_DEFAULT = JSON.parse(JSON.stringify(S));
 /* Validate anything that comes from outside (Import JSON, or a tampered localStorage draft): enums, hex colours, numbers, string lengths.
    Acknowledgements are never trusted from a file. Forced bundles and the cap are re-applied after. */
@@ -210,6 +210,7 @@ function sanitizeIntake(I, opts={}){ const o={}, D=S_DEFAULT, inList=(v,l)=>l.in
   if(I.plat&&typeof I.plat==='object'){ o.plat={}; PLATS.forEach(x=>o.plat[x.id]=I.plat[x.id]===true); }
   ['counter','vo','aiTag','noClaims','disclaimer'].forEach(k=>{ if(typeof I[k]==='boolean') o[k]=I[k]; }); o.kids=I.kids===true; o.kidsBundle=I.kidsBundle===true;
   o.ownTopic=str(I.ownTopic,160)||''; o.topic=I.topic===-1?-1:(Number.isInteger(I.topic)&&I.topic>=0&&I.topic<5?I.topic:0);
+  o.market=M3.MARKETS.some(m=>m[0]===I.market)?I.market:'PH';
   o.cap=Math.max(1,Math.min(M3.CAP_MAX,Math.round(+I.cap||M3.CAP_MAX)));
   Object.keys(o).forEach(k=>o[k]===undefined&&delete o[k]);
   if(opts.keepState){ ['step','max','acc','locked','projectId','version','versions','aiAck','compAck'].forEach(k=>{ if(I[k]!==undefined) o[k]=I[k]; });
@@ -218,7 +219,7 @@ function sanitizeIntake(I, opts={}){ const o={}, D=S_DEFAULT, inList=(v,l)=>l.in
   return o; }
 const TRANSIENT=['locking','playing','ackErr'];
 function saveDraft(){ if(!window.Store) return; const o={}; Object.keys(S).forEach(k=>{ if(!TRANSIENT.includes(k)) o[k]=S[k]; }); Store.saveDraft(o); const el=document.querySelector('.saved'); if(el){ el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); el.lastChild.textContent=' Autosaved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }
-const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic','cap'];
+const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic','cap','market'];
 const intakeSnapshot=()=>{ const o={}; INTAKE_FIELDS.forEach(k=>o[k]=JSON.parse(JSON.stringify(S[k]))); return o; };
 const REALISTIC=['photoreal_macro','archival_doc','photoreal','cinematic'];
 const isRealistic=()=>REALISTIC.includes(S.style);
@@ -411,7 +412,7 @@ const VIEWS = {
   <div class="lbl st">Publish to</div>
   <div class="grid g4">${PLATS.map(p=>`<button class="card plat st ${S.plat[p.id]?'sel':''}" data-act="plat" data-val="${p.id}" ${kidsForced()&&p.id!=='yt'?'disabled title="Kids projects publish to YouTube only"':''}><div class="ico" style="--c:${p.c}1f;--cc:${p.c}">${ic(p.i)}</div><h3>${p.n}</h3><span class="cbx">${ic('check')}</span></button>`).join('')}</div>
   ${S.plat.tt?`<p class="st" style="margin-top:10px;font-size:12px">${S.dur<=60?`<span class="badge warn" style="margin-right:6px">TikTok: Reach only, not eligible for Creator Rewards</span><span class="muted">${S.dur}s is fine for reach. Creator Rewards needs 61s or longer (pick 90s in Format).</span>`:`<span class="badge grn">${ic('check')}TikTok: Creator Rewards eligible (${S.dur}s)</span>`}</p>`:''}
-  ${alcoholWarn()}
+  ${marketField()}${alcoholWarn()}
   ${step8Extra()}`; },
 9(){ const items=[['Goal',G(S.goal).n,'Primary monetization path',1],['Niche',`${N(S.niche).n} › ${subName()}`,REAL?`Compliance: ${(curSub()||{}).risk||'—'}`:'Example data',2],
     ['Format',`${F().n} · ${S.dur}s`,`${S.aspect} · ≈${words(S.dur)} words · ${shots(S.dur)} shots${S.plat.tt&&S.dur<=60?' · TikTok: reach only':''}`,3],['Budget',`$${S.cap}/day cap`,'Per user · enforced by your Grok Bot',9],['Style',ST().n,ST().mo,4],
@@ -494,6 +495,7 @@ function contrastBox(){ const P=Object.fromEntries(Object.entries(S.pal).map(([k
   return `<div class="lbl">Contrast check <span class="r" style="color:var(--dim)">WCAG AA needs 4.5:1</span></div><div class="contrast">${rows.map(([n,f,b])=>{const r=cr(f,b);return `<div class="crow ${r>=4.5?'pass':'fail'}"><span class="sw2" style="color:${hx(f)};background:${hx(b)}" data-t="Aa" role="img" aria-label="Sample"></span><span>${n}</span><b>${r.toFixed(2)}:1 ${r>=4.5?'✓':'✗ too low'}</b></div>`}).join('')}
    ${wt<4.5?`<div class="crow fail"><span class="sw2" style="color:#fff;background:${P.hl}" data-t="Aa" role="img" aria-label="Blocked sample: white on highlight"></span><span>White text on highlight is blocked</span><b>${wt.toFixed(2)}:1</b></div>`:''}</div>`; }
 function bundleBanner(){ const bl=bundleList(); if(!bl.length) return ''; return `<div class="infobox st" style="background:rgba(139,92,246,.07);border-color:rgba(139,92,246,.35)">${ic('lock')}<div><b>Forced rule bundle${bl.length>1?'s':''}: ${esc(bl.map(b=>b.name).join(' · '))}</b><br>These settings are locked for ${esc(subName())}: ${[forcedDisc()?(forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer':'disclaimer'):'', claimsOn()?'no-claims rules':'', kidsForced()?'made for kids + YouTube only':'', forcedWords().length?forcedWords().length+' banned words':''].filter(Boolean).join(' · ')}.${blockedGoal()?` <b style="color:#ffb1b5">Your goal (${esc(G(S.goal).n)}) is blocked for this niche.</b>`:''}</div></div>`; }
+function marketField(){ return `<label class="field st" style="max-width:320px;margin-top:12px"><span>Target market (sets age limits)</span><select class="inp" data-in="market">${M3.MARKETS.map(([c,n,a])=>`<option value="${c}" ${S.market===c?'selected':''}>${n} · drinking age ${a}</option>`).join('')}</select></label>`; }
 function alcoholWarn(){ if(!M3.isAlcohol(S)) return ''; return `<div class="errbanner st" style="margin-top:12px;background:rgba(255,176,32,.08);border-color:rgba(255,176,32,.5)">${ic('warn')}<div><b>Alcohol niche: never auto-published.</b> ${esc(M3.ALCOHOL_YT)}${S.plat.yt?'':' (YouTube isn\'t selected right now.)'}</div></div>`; }
 function topicSection(ro){ const hits=topicHits(), tb=M3.topicBundles(M3.topicText(S));
   return `<div class="lbl st">${ic('spark')}Suggested topics · ${esc(subName())} <span class="r">${REAL?`<span class="badge grn">From research topic seeds</span>`:`<span class="badge warn">Example data, research pending</span>`}</span></div>
@@ -533,7 +535,7 @@ function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S
     ai_disclosure:{required:true,acknowledged:S.aiAck,on_screen_tag:S.aiTag||isRealistic(),photoreal:isRealistic(),platforms:Object.fromEntries(plats.map(k=>[k,M3.AI_DISCLOSURE[k].label]))},
     affiliate_disclosure:affOn()?{required:true,on_screen:true,in_description:true,text:M3.AFFILIATE_LINE}:null,
     budget:{daily_cap_usd:Math.min(M3.CAP_MAX,+S.cap||M3.CAP_MAX),est_cost_per_video_usd:M3.videoCost(S),enforced_by:'server-side ledger + user Grok Bot in production (simulated here)'}, tiktok:S.plat.tt?{duration_s:S.dur,creator_rewards_eligible:S.dur>60}:null,
-    platforms:plats, publish_via:'official APIs only', gates:['script','stills','video','final'], approvals:'hash-locked'}; }
+    market:{code:S.market,drinking_age:M3.drinkingAge(S.market),facebook_age_min:M3.ageMin(S.market)}, platforms:plats, publish_via:'official APIs only', gates:['script','stills','video','final'], approvals:'hash-locked'}; }
 
 /* load the autosaved draft (validated: it may have been edited in devtools) */
 (function(){ const d=window.Store&&Store.getDraft(); if(d&&d.goal&&GOALS.find(g=>g.id===d.goal)) Object.assign(S,sanitizeIntake(d,{keepState:true}),{locking:false,playing:null,ackErr:false}); else S.playing=null; })();

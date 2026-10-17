@@ -99,9 +99,15 @@
       case 'force': Pipeline.retry(id, k, true); return;
       case 'swap': Pipeline.swap(id, +a.dataset.i); return;
       case 'queue': { const sel = document.getElementById('ttpriv-' + id); if (sel && !sel.value) { App.toast('Choose who can view the TikTok video first', 'err'); sel.focus(); return; } Pipeline.queue(id, false, sel ? sel.value : null); return; }
-      case 'ageconfirm': Pipeline.confirmAgeGate(id, a.dataset.p, 'confirm'); return;
-      case 'agekeep': Pipeline.confirmAgeGate(id, a.dataset.p, 'keep_private'); return;
-      case 'fbcheck': Pipeline.fbAgeCheck(id); return;
+      case 'ageconfirm': Pipeline.confirmAgeGate(id, a.dataset.p, 'age_restricted'); return;
+      case 'agekeep': Pipeline.confirmAgeGate(id, a.dataset.p, 'kept_private'); return;
+      case 'fbpage': Pipeline.fbPageCheck(id, a.checked); return;
+      case 'stucksim': { const R = ['keyset_expired','unclaimed_dispatches','template_outdated'], h = Store.getFlags().routine_health || {}; const n = h.stuck_since ? R[(R.indexOf(h.stuck_reason) + 1) % R.length] : R[0];
+        Store.setFlag('routine_health', {stuck_since:h.stuck_since || new Date().toISOString(), stuck_reason:n, keyset_v:1, returned:false}); route(); return; }
+      case 'stuckback': Store.setFlag('routine_health', Object.assign({}, Store.getFlags().routine_health, {returned:true})); route(); return;
+      case 'stuckoff': Store.setFlag('routine_health', {}); route(); return;
+      case 'stuckcheck': { const h = Store.getFlags().routine_health || {}; if (h.stuck_reason === 'template_outdated' || h.returned) { App.toast('Still stuck (simulated). Re-copy the routine from the template.', 'err'); return; }
+        Store.setFlag('routine_health', {}); App.toast('Routine is picking up jobs again (simulated)'); route(); return; }
       case 'ttaudit': Store.setFlag('tiktok_direct_post_audited', !Store.getFlags().tiktok_direct_post_audited); route(); return;
       case 'resetspend': Store.resetSpend(); App.toast('Simulated: new day, spend reset to $0'); Pipeline.retry(id, k); return;
       case 'download': Pipeline.download(id); return;
