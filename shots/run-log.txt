@@ -1,0 +1,38 @@
+shot 01-intake-goal
+shot 02-intake-niche
+shot 03-intake-format
+shot 04-intake-style
+shot 05-intake-voice
+shot 06-intake-brand
+shot 07-intake-captions
+step 8 gate OK
+shot 08-intake-safety-ai
+shot 09-intake-review
+shot 10-intake-locked
+project http://localhost:8765/?static=1#/project/prj_p9alo297kr
+shot 11-project-needs-you
+shot 12-connections-missing
+real-key rejected: That looks like a real key, so it was rejected and not saved
+shot 13-connections-needs-you-login
+shot 14-connections-connected
+shot 15-project-script-approval
+approved script
+approved stills
+approved video
+approved final
+shot 16-project-publish-choice
+after swap: awaiting stale stale
+shot 17-project-reapproval-needed
+shot 18-project-failed-retry
+shot 19-project-complete
+shot 20-projects
+shot 21-onboarding
+version now 2 locked versions 1
+shot m1-intake-goal
+shot m2-intake-brand
+shot m3-intake-safety
+shot m4-project
+shot m5-connections
+shot m6-onboarding
+mobile step chips cut off: 0
+ERRORS: none
