@@ -53,7 +53,7 @@ function artifact(p, k){
       <div class="lbl">Labels burned in / applied</div><div class="chips">${o.labels.map(l => `<span class="badge vio">${esc(l)}</span>`).join('')}</div></div></div>`;
     case 'publish': return o.downloaded ? `<div class="art"><b>${ic('dl')} Downloaded</b> <span class="muted">(test build: project manifest JSON; the real build delivers the MP4)</span></div>`
       : `<div class="art"><b>${ic('check')} Sent to 3x3's publish-broker</b> <span class="muted">(server-side, official APIs, simulated: nothing was posted)</span>
-        <div class="pubres">${(o.results||[]).map(r => `<div class="kv"><span>${PLATN[r.plat]}</span><b>${esc(r.mode)} · ${esc(r.account||'')}${r.plat==='tt'&&p.intake.dur<=60?` · <span class="badge warn">${esc(M3.REACH_ONLY)}</span>`:''}${r.plat==='yt'&&(p.rules.rule_bundles_applied||[]).includes('kids')?' · <span class="badge cyan">Made for Kids</span>':''}</b></div>`).join('')}</div>
+        <div class="pubres">${(o.results||[]).map(r => `<div class="kv"><span>${PLATN[r.plat]}</span><b>${esc(r.mode)} · ${esc(r.account||'')}${r.plat==='tt'&&p.intake.dur<=60?` · <span class="badge warn">${esc(M3.REACH_ONLY)}</span>`:''}${r.kids?' · <span class="badge cyan">Made for Kids</span>':''}</b></div>`).join('')}</div>
         ${M3.isAlcohol(p.intake)?`<div class="infobox" style="margin-top:8px">${ic('lock')}<div>Alcohol bundle: never auto-published, each post confirmed per platform, no affiliate or retailer links, disclaimer on screen: “${esc(((p.rules.safety||{}).disclaimer||{}).text||'')}”.</div></div>`:''}</div>`;
   }
   return '';

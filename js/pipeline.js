@@ -46,14 +46,16 @@
       Object.assign(st, {status:'running', jobId:job.id, inputHash:P.inputHash(p, k), approval:null, missing:[], choice:false, error:null, forced:!!(opts.force && miss.length)});
       P.log(p, `${sd.n}: job sent to ${k === 'publish' ? '3x3 publish-broker (server)' : 'your Grok Bot worker'}${opts.swap != null ? ` (swap still #${opts.swap+1})` : ''}${st.forced ? ' (simulated anyway, connection missing)' : ''}`);
     },
-    publishTargets(p){ const conns = Store.getConnections(), I = p.intake, alc = M3.isAlcohol(I), kids = (p.rules.rule_bundles_applied||[]).includes('kids') || I.kids;
+    publishTargets(p){ const conns = Store.getConnections(), I = p.intake, alc = M3.isAlcohol(I), kids = P.kidsRule(p);
       return Object.keys(I.plat).filter(x => I.plat[x] && (!kids || x === 'yt')).map(x => {
         const c = M3.CONNS.find(cc => cc.plat === x), acct = (conns[c.id] || {}).account || c.acct;
         let mode = 'public';
         if (alc) mode = M3.ALCOHOL_MODES[x];
         else if (x === 'tt') mode = P.ttDirect(p) && p.stages.publish.ttPrivacy ? 'direct post (audited) · privacy ' + p.stages.publish.ttPrivacy : 'uploaded to your TikTok inbox (draft): you post it in the app';
         return {plat:x, mode, account:acct, kids: kids && x === 'yt', reach_only: x === 'tt' && I.dur <= 60}; }); },
-    ttDirect(p){ const I = p.intake; return !!Store.getFlags().tiktok_direct_post_audited && !M3.isAlcohol(I) && !!I.plat.tt && !((p.rules.rule_bundles_applied||[]).includes('kids') || I.kids); },
+    /* made-for-kids comes from the compiled, locked rules (rules.safety.made_for_kids), never the raw intake flag */
+    kidsRule(p){ return !!(p.rules && p.rules.safety && p.rules.safety.made_for_kids === true); },
+    ttDirect(p){ const I = p.intake; return !!Store.getFlags().tiktok_direct_post_audited && !M3.isAlcohol(I) && !!I.plat.tt && !P.kidsRule(p); },
     publishMissing(p){ const conns = Store.getConnections(); const ids = [];
       P.publishTargets(p).forEach(t => ids.push(M3.CONNS.find(c => c.plat === t.plat).id)); if (p.intake.plat.ig && ids.includes('instagram')) ids.push('facebook');
       return ids.filter((v,i,a) => a.indexOf(v) === i && !M3.isOk(conns[v])); },
@@ -65,7 +67,7 @@
       if (job.status !== 'done' || st.status !== 'running') return;
       st.output = Object.assign({}, job.output); st.output.hash = M3.hash(job.output); st.inputHash = P.inputHash(p, job.stage);
       if (job.stage === 'publish' && M3.isAlcohol(p.intake)) { st.status = 'needs'; st.ageGate = {plats:(job.output.results || []).map(r => r.plat), confirmed:{}};
-        P.log(p, 'Alcohol bundle: YouTube uploaded private, TikTok sent to inbox drafts, Facebook and Instagram held by 3x3. Needs you: confirm each post on each platform'); return; }
+        P.log(p, 'Alcohol bundle: YouTube uploaded private, TikTok sent to inbox drafts, Facebook and Instagram held by 3x3 (nothing sent). Needs you: for each post on each platform, answer age-restricted (Facebook: check the Page\'s age restriction first) or 18+ isn\'t available: keep private / don\'t post. 3x3 never makes alcohol public'); return; }
       if (sd.approval) { st.status = 'awaiting'; P.log(p, `${sd.n} ready for your approval (output ${st.output.hash.slice(0,8)})`); }
       else { st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), auto:true};
         P.log(p, `${sd.n} done`); const n = P.nextKey(p, job.stage); if (n && p.stages[n].status === 'idle') P.start(p, n); }
@@ -100,6 +102,7 @@
         rules:p.rules, stages:Object.fromEntries(Object.entries(p.stages).map(([k,s]) => [k, {status:s.status, output_hash:s.output && s.output.hash, approval:s.approval || null}]))};
       const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(manifest, null, 2)], {type:'application/json'}));
       a.download = `3x3-${p.id}-manifest.json`; document.body.appendChild(a); a.click(); a.remove();
+      if (M3.isAlcohol(p.intake)) { st.downloadedAt = now(); P.log(p, 'Downloaded (simulated: manifest JSON). Publish stays not done: alcohol posts need your per-platform age answers'); return; }
       st.output = {downloaded:true, at:now()}; st.output.hash = M3.hash(st.output); st.status = 'done'; st.inputHash = P.inputHash(p, 'publish'); st.choice = false;
       st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), auto:true}; P.log(p, 'Downloaded (simulated: manifest JSON instead of MP4)'); },
     reset(id){ const p = Store.getProject(id); M3.STAGES.forEach(s => p.stages[s.k] = {status: p.stages[s.k].status === 'skipped' ? 'skipped' : 'idle', version:0}); p.log = []; P.log(p, 'Simulation reset'); P.start(p, 'rules'); },

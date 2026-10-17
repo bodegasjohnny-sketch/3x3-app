@@ -9,11 +9,11 @@ step 8 gate OK
 shot 08-intake-safety-ai
 shot 09-intake-review
 shot 10-intake-locked
-project http://localhost:8765/?static=1#/project/prj_e51drxzt8a
+project http://localhost:8765/?static=1#/project/prj_v1hioionpd
 shot 11-project-needs-you
 shot 12-connections-missing
 real-looking key rejected: Test mode: that looks like a real key, so it was rejected and not stor
-signing secret shown once: test_sig_56fac…
+signing secret shown once: test_sig_5d550…
 shot 12b-connections-worker-secret
 worker failure message OK
 worker connected OK

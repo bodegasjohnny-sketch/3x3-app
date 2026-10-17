@@ -85,6 +85,11 @@ with sync_playwright() as p:
     exp = {'yt':'uploaded private', 'tt':'TikTok inbox', 'fb':'held by 3x3', 'ig':'held by 3x3'}
     ok('alcohol_modes_v26', len(modes) == 4 and all(exp[m.split(':')[0]] in m for m in modes))
     ok('alcohol_needs_you_per_platform_confirm', s == 'needs' and pg.locator('[data-x="ageconfirm"]').count() == 4 and pg.locator('[data-x="agekeep"]').count() == 4)
+    logs = E(pg, f"Store.getProject('{pid}').log.map(l=>l.text).join(' | ')")
+    ok('alcohol_upload_log_v27_wording', 'never makes alcohol public' in logs and 'keep private' in logs and 'confirm each post' not in logs)
+    E(pg, f"Pipeline.download('{pid}')"); pg.wait_for_timeout(300)
+    dl = E(pg, f"(()=>{{const st=Store.getProject('{pid}').stages.publish;return {{status:st.status, gate:!!st.ageGate, dl:!!st.downloadedAt, out:!!(st.output&&st.output.downloaded)}}}})()")
+    ok('alcohol_download_leaves_publish_not_done', dl == {'status':'needs','gate':True,'dl':True,'out':False})
     pg.locator('#stage-publish').scroll_into_view_if_needed(); pg.screenshot(path=str(O/'31-alcohol-age-gate.png')); axe_on(pg, 'project-alcohol-age-gate')
     # (1) Facebook: Page age restriction is checked BEFORE answering
     ok('alcohol_fb_answer_disabled_until_page_check', pg.is_disabled('[data-x="ageconfirm"][data-p="fb"]'))
@@ -126,9 +131,11 @@ with sync_playwright() as p:
     E(pk, 'Intake.state.aiAck=true'); hash(pk, '#/intake/9'); pk.set_input_files('#impFile', '/tmp/nokids.json'); pk.wait_for_timeout(500)
     ok('import_without_kids_field_is_false', E(pk, "Intake.snapshot().kids") is False)
     # 4d. topic evasion
-    ev = E(pk, """(()=>{const pos={'c r y p t o coins':'crypto','crypt0':'crypto','cryp-to':'crypto','Bitcoins':'crypto','whiskies':'alcohol','\u0441rypto':'crypto','\uff43\uff52\uff59\uff50\uff54\uff4f':'crypto','Doge':'crypto','Solana':'crypto','10x gains':'crypto','1 0 0 x':'crypto','moonshine':'alcohol','liquors':'alcohol','b1tc01n':'crypto'};
-      const neg=['Beginner budgeting','How engines work','Origin of the drum','Spectrum of light','Livestock farming','Solar system','Cryptography basics','Holy spirit','Gingerbread','Rumors debunked','4x4 trucks'];
+    ev = E(pk, """(()=>{const pos={'c r y p t o coins':'crypto','crypt0':'crypto','cryp-to':'crypto','Bitcoins':'crypto','whiskies':'alcohol','\u0441rypto':'crypto','\uff43\uff52\uff59\uff50\uff54\uff4f':'crypto','Doge coin price':'crypto','Solana':'crypto','10x gains':'crypto','1 0 0 x returns':'crypto','\u0392\u0399\u03a4CO\u0399\u039d':'crypto','11quor':'alcohol','I1quor':'alcohol','Iiquor history':'alcohol','&#99;rypto presale':'crypto','&#x63;rypto':'crypto','&amp;#99;rypto':'crypto','wh&iacute;sky':'alcohol','&lt;b&gt;spirits':'alcohol','Spirits of Scotland':'alcohol','hard seltzer boom':'alcohol','100x your money':'crypto','moonshine':'alcohol','liquors':'alcohol','b1tc01n':'crypto'};
+      const neg=['Beginner budgeting','How engines work','Origin of the drum','Spectrum of light','Livestock farming','Solar system','Cryptography basics','Holy spirit','Gingerbread','Rumors debunked','4x4 trucks','Doge Palace Venice','100x zoom camera','10x10 grid','2x speed','Liquid crystals','Spiritual retreats','Wholesale','Female','Finale','Rationale','Lily pads','Illinois','Silly songs','Million dollar'];
       return {miss:Object.entries(pos).filter(([t,b])=>!M3.topicBundles(t).includes(b)).map(x=>x[0]), fp:neg.filter(t=>M3.topicBundles(t).length), banned:M3.bannedHits('1 0 0 x g u a r a n t e e d',['guaranteed','100x'])}})()""")
+    ev2 = E(pk, "({cure:M3.bannedHits('A cure-all tonic',['cure']), cureNo:M3.bannedHits('Curious cats',['cure']), il:M3.bannedHits('Gu4r4nteed I1fe hacks',['life'])})")
+    ok('banned_cure_all_hyphen_split', ev2['cure'] == ['cure'] and ev2['cureNo'] == [] and ev2['il'] == ['life'])
     ok('topic_evasion_caught', ev['miss'] == []); ok('topic_no_false_positives', ev['fp'] == []); ok('topic_spaced_banned_words', sorted(ev['banned']) == ['100x','guaranteed'])
     if ev['miss'] or ev['fp']: print(ev)
     # 4e. routine key / URL rules
@@ -164,6 +171,12 @@ with sync_playwright() as p:
     sp = E(pg, "Store.spentToday()"); st = E(pg, f"Store.getProject('{pid2}').stages.video")
     ok('cap_spend_le_20', sp <= 20.0001); ok('cap_needs_you', st['status'] == 'needs' and bool(st.get('capHit')))
     pg.locator('#stage-video').scroll_into_view_if_needed(); pg.wait_for_timeout(300); pg.screenshot(path=str(O/'32-spend-cap-needs-you.png'))
+    # pass-4 fixes: publish reads compiled made_for_kids; alcohol Download leaves Publish not done
+    kr = E(pg, """(()=>{const base={id:'x',intake:{plat:{yt:true,fb:true,tt:true,ig:true},kids:true,dur:45,niche:'science_space'},rules:{rule_bundles_applied:[],safety:{made_for_kids:false}}};
+      const a=Pipeline.publishTargets(base).map(r=>r.plat).join(); base.intake.kids=false; base.rules.safety.made_for_kids=true;
+      const b=Pipeline.publishTargets(base).map(r=>r.plat+(r.kids?'*':'')).join(); return {a,b}})()""")
+    ok('publish_targets_use_compiled_made_for_kids', kr['a'] == 'yt,fb,tt,ig' and kr['b'] == 'yt*')
+    ok('tt_direct_uses_compiled_made_for_kids', E(pg, "(()=>{Store.setFlag('tiktok_direct_post_audited',true);const p={intake:{plat:{tt:true},kids:true,niche:'science_space'},rules:{safety:{made_for_kids:false}}};const r=Pipeline.ttDirect(p);p.rules.safety.made_for_kids=true;const r2=Pipeline.ttDirect(p);Store.setFlag('tiktok_direct_post_audited',false);return r&&!r2})()"))
     # (5) stuck routine reset card
     ps = page(); hash(ps, '#/connections', 500)
     ok('stuck_card_hidden_by_default', ps.locator('#conn-stuck').count() == 0)
