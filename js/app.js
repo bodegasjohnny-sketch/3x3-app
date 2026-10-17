@@ -80,8 +80,6 @@
   });
 
   /* ---------- page actions (data-x) ---------- */
-  function fieldVal(k){ const el = document.querySelector(`[data-f="${k}"]`); return el ? el.value : ''; }
-  function setErr(id, msg){ const el = document.getElementById('err-' + id); if (el) { el.textContent = msg || ''; el.classList.toggle('on', !!msg); } }
   document.addEventListener('click', e => {
     const a = e.target.closest('[data-x]'); if (!a) return;
     const x = a.dataset.x, id = a.dataset.id, k = a.dataset.k, c = a.dataset.c;
@@ -99,19 +97,13 @@
       case 'delproject': if (confirm('Delete this project from this browser?')) { Store.deleteProject(id); const d = Store.getDraft(); if (d && d.projectId === id) { Intake.state.projectId = null; Store.saveDraft(Object.assign(d, {projectId:null})); } location.hash = '#/projects'; } return;
       case 'failnext': Sim3x3.failNext = !Sim3x3.failNext; route(); return;
       case 'speed': Sim3x3.speed = Sim3x3.speed === 1 ? 3 : 1; route(); return;
-      case 'save': {
-        if (c === 'worker') { const u = M3.checkUrl(fieldVal('worker.url')); if (!u.ok) return setErr(c, u.msg); const s = M3.checkSecret(fieldVal('worker.secret')); if (!s.ok) { if (s.real) document.querySelector('[data-f="worker.secret"]').value = ''; return setErr(c, s.msg); }
-          Store.saveConnection('worker', {status:'connected', url:new URL(fieldVal('worker.url').trim()).origin + '/…', hint:s.hint}); App.toast('Worker webhook saved (test mode)'); return; }
-        const s = M3.checkSecret(fieldVal(c + '.key')); if (!s.ok) { if (s.real) document.querySelector(`[data-f="${c}.key"]`).value = ''; return setErr(c, s.msg); }
-        Store.saveConnection(c, {status:'connected', hint:s.hint}); App.toast(`${M3.conn(c).n} saved (test mode)`); return; }
-      case 'route': { const cur = Store.getConnection('imagine'); if ((cur.route || 'api') !== a.dataset.v) Store.saveConnection('imagine', {route:a.dataset.v, status:'missing', hint:null, jobId:null}); return; }
-      case 'connect': { if (!M3.isOk(Store.getConnection('worker'))) { App.toast('Connect your Grok Bot worker first: logins run on your bot', 'err'); location.hash = '#/connections?focus=worker'; return; }
+      case 'simstatus': { const v = a.dataset.v; const cur = Store.getConnection(c); if (cur.jobId && cur.status === 'pending') Sim3x3.cancel(cur.jobId);
+        Store.saveConnection(c, {status:v, jobId:null, hint:null}); App.toast(`${M3.conn(c).n}: ${({connected:'Connected',missing:'Missing',relogin:'Needs re-login'})[v]} (simulated)`, v === 'connected' ? '' : 'err'); return; }
+      case 'connect': { if (!M3.isOk(Store.getConnection('worker'))) { App.toast('Link your Grok Bot worker first: sign-ins run on your bot', 'err'); location.hash = '#/connections?focus=worker'; return; }
         const prev = Store.getConnection(c).status || 'missing'; const j = Store.dispatchJob({kind:'connect', payload:{conn:c}});
         Store.saveConnection(c, {status:'pending', jobId:j.id, prev: prev === 'pending' ? 'missing' : prev}); return; }
       case 'confirm': { const cc = Store.getConnection(c); if (cc.jobId) Sim3x3.confirm(cc.jobId); return; }
       case 'cancel': { const cc = Store.getConnection(c); if (cc.jobId) Sim3x3.cancel(cc.jobId); return; }
-      case 'expire': Store.saveConnection(c, {status:'relogin'}); App.toast(`${M3.conn(c).n}: session expired (simulated)`, 'err'); return;
-      case 'disconnect': Store.saveConnection(c, {status:'missing', hint:null, url:null, jobId:null}); return;
       case 'obcheck': Store.setOnboarding({[k]: a.checked}); return;
       case 'testjob': { const j = Store.dispatchJob({kind:'ping', payload:{hello:'3x3'}}); Store.setOnboarding({testJobId:j.id, testJobStatus:'queued'}); return; }
     }

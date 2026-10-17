@@ -5,14 +5,14 @@ const M = {};
 /* ---------- connections the automation needs ---------- */
 M.CONNS = [
   {id:'worker', n:'Grok Bot worker', short:'Grok Bot worker webhook', kind:'webhook', icon:'bolt', c:'#00C2FF',
-   what:'Your own Grok Bot, created from the 3x3 template, does the actual work. This app posts each job to its worker webhook; the bot runs it on its own computer and reports back.',
-   how:'In your bot: Settings › Webhooks › copy the worker URL. The signing secret stays in your bot\'s secret store in production.'},
-  {id:'imagine', n:'Grok Imagine', short:'Grok Imagine access', kind:'imagine', icon:'spark', c:'#8B5CF6',
-   what:'Generates every still (storyboard) and turns stills into short clips.',
-   how:'Pick a route. xAI API is recommended at volume. The SuperGrok browser route is for low volume.'},
+   what:'Your own Grok Bot, created from the 3x3 template, does the actual work. 3x3 sends each job to its worker webhook; the bot runs it on its own computer and reports back.',
+   how:'In your bot, say "Link my 3x3 account". The bot registers its worker webhook with 3x3 and creates its own signing secret. Nothing gets pasted here.'},
+  {id:'imagine', n:'xAI API (Grok Imagine)', short:'xAI API key', kind:'apikey', icon:'spark', c:'#8B5CF6',
+   what:'Generates every still (storyboard) and turns stills into short clips through the official xAI API. For 3x3, image and video generation uses the xAI API only.',
+   how:'Create an API key at console.x.ai, then tell your bot: "Save my xAI API key as a secret". The bot keeps it in its secret store and calls the API itself.'},
   {id:'elevenlabs', n:'ElevenLabs', short:'ElevenLabs API key', kind:'apikey', icon:'mic', c:'#F5F7FA',
    what:'Generates the voiceover narration from the approved script with your chosen voice.',
-   how:'In production the key lives in your Grok Bot secret store, and the bot calls the ElevenLabs API.'},
+   how:'In ElevenLabs open Profile › API keys and create a key. Then tell your bot: "Save my ElevenLabs API key as a secret". The bot calls the ElevenLabs API itself.'},
   {id:'youtube', n:'YouTube', short:'YouTube channel', kind:'connector', icon:'yt', c:'#EA3943', plat:'yt',
    what:'Uploads finished Shorts to your channel.', api:'YouTube Data API v3 (videos.insert), via OAuth',
    how:'Your bot connects YouTube as a connector (Google OAuth consent). The login is only used to authorize the API.'},
@@ -68,14 +68,14 @@ M.stageNeeds = (stageKey, I) => {
 M.isOk = st => st && st.status === 'connected';
 M.connLabelMissing = (id, st) => {
   const c = M.conn(id);
-  if (id === 'imagine') { const route = (st && st.route) || 'api'; return route === 'api' ? 'an xAI API key (Grok Imagine)' : 'a SuperGrok login'; }
-  if (id === 'elevenlabs') return 'an ElevenLabs API key';
+  if (id === 'imagine') return 'an xAI API key (in your Grok Bot)';
+  if (id === 'elevenlabs') return 'an ElevenLabs API key (in your Grok Bot)';
   if (id === 'worker') return 'your Grok Bot worker webhook';
   const an = /^[AEIOU]/i.test(c.n) ? 'an' : 'a';
   if (c.kind === 'browser') return `${an} ${c.n} login`;
   return `${an} ${c.n} connection`;
 };
-/* warnings like "Stills step needs SuperGrok login" for every missing/expired required connection */
+/* warnings like "Stills step needs an xAI API key" for every missing/expired required connection */
 M.warnings = (I, conns) => {
   const out = [];
   Object.values(M.requirements(I)).forEach(req => {
@@ -92,18 +92,7 @@ M.warnings = (I, conns) => {
   return out;
 };
 
-/* ---------- secret guard: test placeholders only ---------- */
-M.TEST_RE = /^test[_-][A-Za-z0-9_-]{1,32}$/;
-M.REAL_RE = /(sk[_-]|xi[_-]|xai[_-]|gh[opsu]_|AIza|EAA[A-Za-z0-9]|ya29\.|whsec_)[A-Za-z0-9_\-]{8,}|[A-Za-z0-9_\-]{32,}/;
-M.checkSecret = v => {
-  v = (v || '').trim();
-  if (!v) return {ok:false, msg:'Enter a placeholder such as test_key_1.'};
-  if (M.REAL_RE.test(v) && !M.TEST_RE.test(v)) return {ok:false, real:true, msg:'That looks like a real key, so it was rejected and not saved. This test build only accepts placeholders that start with test_.'};
-  if (!M.TEST_RE.test(v)) return {ok:false, msg:'Simulated build: use a placeholder that starts with test_ (letters, digits, _ or -, at most 37 characters).'};
-  return {ok:true, hint: v.slice(0, 6) + '…' + v.slice(-2)};
-};
-M.checkUrl = v => { try { const u = new URL((v||'').trim()); if (u.protocol !== 'https:') return {ok:false, msg:'The webhook URL must start with https://'}; if (/[?&](key|token|secret|sig)=/i.test(u.search)) return {ok:false, msg:'Remove credentials from the URL. Secrets never go in the URL.'}; return {ok:true}; } catch(e){ return {ok:false, msg:'Enter a full https:// URL.'}; } };
-
+/* No secret inputs exist in 3x3: keys and signing secrets live in each user's Grok Bot secret store. */
 /* ---------- hashing (approval locks) ---------- */
 M.hash = (obj) => {
   const s = typeof obj === 'string' ? obj : JSON.stringify(obj);
@@ -128,6 +117,9 @@ M.BANNED_PRESET = {
   finance:['guaranteed returns','risk-free','get rich quick','financial advice','to the moon','double your money'],
   local_business:['guaranteed','best in town','#1 rated'],
 };
+M.ALCOHOL_SUBS = ['liquor_history'];
+M.isAlcohol = I => M.ALCOHOL_SUBS.includes(I.sub) || /liquor|alcohol|wine|beer|cocktail|whisk(e)?y|rum|gin|vodka/i.test(I.ownTopic || '');
+M.ALCOHOL_YT = 'Alcohol content can\'t auto-publish to YouTube. Upload it, then set an age restriction (18+) by hand in YouTube Studio. 3x3 marks YouTube as a manual step for this project.';
 M.AFFILIATE_LINE = '#ad · I may earn a commission from links in my bio';
 M.isAffiliate = I => I.goal === 'affiliate';
 

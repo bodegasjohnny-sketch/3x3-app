@@ -33,12 +33,9 @@ with sync_playwright() as p:
     shot('11-project-needs-you')
     # connections
     pg.click('a.tab[href="#/connections"]'); pg.wait_for_timeout(500); shot('12-connections-missing')
-    pg.fill('[data-f="elevenlabs.key"]', 'sk_' + 'a'*40); pg.click('[data-x="save"][data-c="elevenlabs"]'); pg.wait_for_timeout(200)
-    msg = pg.inner_text('#err-elevenlabs'); L('real-key rejected:', msg[:60]); assert 'rejected' in msg
-    assert 'sk_' not in json.dumps(pg.evaluate('JSON.stringify(localStorage)'))
-    pg.fill('[data-f="worker.url"]', 'https://worker.example-bot.test/hook'); pg.fill('[data-f="worker.secret"]', 'test_secret_1'); pg.click('[data-x="save"][data-c="worker"]'); pg.wait_for_timeout(300)
-    pg.fill('[data-f="elevenlabs.key"]', 'test_eleven_1'); pg.click('[data-x="save"][data-c="elevenlabs"]'); pg.wait_for_timeout(300)
-    pg.fill('[data-f="imagine.key"]', 'test_xai_1'); pg.click('[data-x="save"][data-c="imagine"]'); pg.wait_for_timeout(300)
+    assert pg.locator('input[type=password], [data-f]').count() == 0, 'no secret inputs allowed'
+    for c in ['worker','imagine','elevenlabs']:
+        pg.click(f'[data-x="simstatus"][data-c="{c}"][data-v="connected"]'); pg.wait_for_timeout(250)
     pg.click('[data-x="connect"][data-c="tiktok"]'); pg.wait_for_timeout(1800)
     pg.locator('#conn-tiktok').scroll_into_view_if_needed(); shot('13-connections-needs-you-login')
     for c in ['youtube','facebook','instagram','tiktok']:
@@ -74,6 +71,10 @@ with sync_playwright() as p:
     # intake versioning
     pg.goto(BASE + '#/intake/9'); pg.wait_for_timeout(500); pg.click('[data-act="newversion"]'); pg.wait_for_timeout(400)
     L('version now', pg.evaluate('Intake.state.version'), 'locked versions', pg.evaluate('Intake.state.versions.length'))
+    # alcohol niche warning
+    ax = b.new_context(viewport={'width':1440,'height':900}); ap = ax.new_page()
+    ap.goto(BASE + '#/intake/2'); ap.wait_for_timeout(400); ap.click('[data-set="niche"][data-val="history_culture"]'); ap.wait_for_timeout(200); ap.click('[data-set="sub"][data-val="liquor_history"]'); ap.wait_for_timeout(300)
+    L('alcohol warning shown:', 'no auto-publish to YouTube' in ap.inner_text('#content')); ap.screenshot(path=str(O/'24-alcohol-warning.png')); ax.close()
     # forced rule bundles (fresh context)
     bx = b.new_context(viewport={'width':1440,'height':900}); bp = bx.new_page(); bp.on('pageerror', lambda e: errs.append('B PAGEERR ' + str(e)))
     bp.goto(BASE + '#/intake/2'); bp.wait_for_timeout(500)

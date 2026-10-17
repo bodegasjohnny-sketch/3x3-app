@@ -33,13 +33,13 @@
       const payload = {stage:k, intake:p.intake, topic:p.topic, intakeHash:p.rules.intake_hash, version:st.version, labels:P.labels(p)};
       if (opts.swap != null) { payload.swap = opts.swap; payload.prev = st.output.frames; }
       if (k === 'video') payload.frames = (p.stages.stills.output || {frames:[]}).frames.length;
-      if (k === 'publish') payload.platforms = Object.keys(p.intake.plat).filter(x => p.intake.plat[x]);
+      if (k === 'publish') { const all = Object.keys(p.intake.plat).filter(x => p.intake.plat[x]); payload.manual = M3.isAlcohol(p.intake) ? all.filter(x => x === 'yt') : []; payload.platforms = all.filter(x => !payload.manual.includes(x)); }
       const job = Store.dispatchJob({kind:'stage', project_id:p.id, stage:k, payload});
       Object.assign(st, {status:'running', jobId:job.id, inputHash:P.inputHash(p, k), approval:null, missing:[], choice:false, error:null, forced:!!(opts.force && miss.length)});
       P.log(p, `${sd.n}: job sent to worker${opts.swap != null ? ` (swap still #${opts.swap+1})` : ''}${st.forced ? ' (simulated anyway, connection missing)' : ''}`);
     },
     publishMissing(p){ const conns = Store.getConnections(); const ids = ['worker'];
-      M3.CONNS.filter(c => c.plat && p.intake.plat[c.plat]).forEach(c => ids.push(c.id)); if (p.intake.plat.ig) ids.push('facebook');
+      M3.CONNS.filter(c => c.plat && p.intake.plat[c.plat] && !(c.plat === 'yt' && M3.isAlcohol(p.intake))).forEach(c => ids.push(c.id)); if (p.intake.plat.ig) ids.push('facebook');
       return ids.filter((v,i,a) => a.indexOf(v) === i && !M3.isOk(conns[v])); },
     onJob(job){
       if (job.kind !== 'stage' || !job.project_id) return;

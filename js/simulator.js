@@ -53,7 +53,7 @@
         }
         case 'video': return {clips: Array.from({length:(p.frames||nShots)}, (_,i) => ({i, move:MOVES[i % MOVES.length], s:2.5}))};
         case 'final': return {seconds:I.dur, lufs:-14, true_peak:-1, aspect:I.aspect, labels:p.labels||[], file:'final_v'+(p.version||1)+'.mp4 (simulated)'};
-        case 'publish': return {queued:p.platforms||[], via:'official APIs (simulated)'};
+        case 'publish': return {queued:p.platforms||[], manual:p.manual||[], via:'official APIs (simulated)'};
       }
       return {};
     }

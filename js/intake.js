@@ -297,7 +297,7 @@ const VIEWS = {
     <div class="chips">${n.subs.map(s=>{const fit=REAL?s[2].goals.includes(S.goal):true;return `<button class="chip ${S.sub===s[0]?'sel g':''}" data-set="sub" data-val="${s[0]}">${S.sub===s[0]?ic('check'):(fit?'<span style="color:var(--green);font-size:9px">●</span>':'')}${esc(s[1])}${REAL?risk(s[2].risk):(s[0]==='disease'?risk('high'):'')}</button>`}).join('')}</div>
     ${REAL&&sb?`<div class="tinyrv" style="margin-top:12px">
       <span class="badge mute">RPM tier: ${sb.rpm} (estimate)</span><span class="badge mute">${sb.ever}</span><span class="badge mute">AI visual feasibility: ${sb.vis}</span>
-      <span class="badge ${sb.risk==='high'?'warn':sb.risk==='medium'?'vio':'grn'}">Compliance: ${sb.risk}${sb.areas.length?' · '+sb.areas.slice(0,2).join(', '):''}</span></div>`:''}</div>`; },
+      <span class="badge ${sb.risk==='high'?'warn':sb.risk==='medium'?'vio':'grn'}">Compliance: ${sb.risk}${sb.areas.length?' · '+sb.areas.slice(0,2).join(', '):''}</span></div>`:''}${alcoholWarn()}</div>`; },
 3(){ return sh('Format & duration','The skeleton every script follows. Numbers below update live.')+
   `<div class="lbl st">Format</div><div class="grid g3">${FORMATS.map(f=>`<button class="card st ${S.format===f.id?'sel':''}" data-set="format" data-val="${f.id}">${chk(S.format===f.id)}
     <div class="ico" style="--c:rgba(0,194,255,.12);--cc:var(--cyan)">${ic(f.i)}</div><h3>${f.n}</h3><p>${f.d}</p>
@@ -384,6 +384,7 @@ const VIEWS = {
   <div class="lbl st">Publish to</div>
   <div class="grid g4">${PLATS.map(p=>`<button class="card plat st ${S.plat[p.id]?'sel':''}" data-act="plat" data-val="${p.id}" ${kidsForced()&&p.id!=='yt'?'disabled title="Kids projects publish to YouTube only"':''}><div class="ico" style="--c:${p.c}1f;--cc:${p.c}">${ic(p.i)}</div><h3>${p.n}</h3><span class="cbx">${ic('check')}</span></button>`).join('')}</div>
   ${S.plat.tt&&S.dur<=60?`<p class="st" style="margin-top:10px;font-size:12px;color:#ffb1b5">${ic('info')} TikTok Creator Rewards only counts videos over 1 minute; current duration is ${S.dur}s.</p>`:''}
+  ${alcoholWarn()}
   ${step8Extra()}`; },
 9(){ const items=[['Goal',G(S.goal).n,'Primary monetization path',1],['Niche',`${N(S.niche).n} › ${subName()}`,REAL?`Compliance: ${(curSub()||{}).risk||'—'}`:'Example data',2],
     ['Format',`${F().n} · ${S.dur}s`,`${S.aspect} · ≈${words(S.dur)} words · ${shots(S.dur)} shots`,3],['Style',ST().n,ST().mo,4],
@@ -404,7 +405,7 @@ const VIEWS = {
   return sh('Review & lock','Check every choice. Locking turns them into global rules every video follows.',`<div class="row" style="gap:8px"><button class="btn ghost" data-act="export">${ic('dl')}Export JSON</button><label class="btn ghost" style="cursor:pointer">${ic('up')}Import JSON<input type="file" accept="application/json,.json" id="impFile" hidden></label></div>`)+
   `${blockedGoal()?`<div class="errbanner st">${ic('warn')}<div><b>${esc(G(S.goal).n)} isn't allowed for ${esc(subName())}.</b> The ${esc(blockedGoal().name)} bundle blocks this goal (no exchange or token referral links). <a data-go="1">Change goal →</a> or <a data-go="2">change niche →</a></div></div>`:''}
   ${!S.aiAck?`<div class="errbanner st">${ic('warn')}<div><b>AI disclosure isn't confirmed.</b> It's required before you can lock. <a data-go="8">Go to step 8 →</a></div></div>`:''}
-  ${reviewWarnings()}
+  ${reviewWarnings()}${alcoholWarn()}
   <div class="grid g3">${items.map(([k,v,s,n])=>`<div class="card rv st"><div class="k">${k}<a data-go="${n}">${ic('edit')}Edit</a></div><div class="val">${esc(v)}</div><div class="sub">${esc(s)}</div></div>`).join('')}</div>
   ${costEstimate()}
   ${versionsList()}
@@ -467,6 +468,7 @@ function contrastBox(){ const P=S.pal, rows=[['Text on background',P.text,P.bg],
   return `<div class="lbl">Contrast check <span class="r" style="color:var(--dim)">WCAG AA needs 4.5:1</span></div><div class="contrast">${rows.map(([n,f,b])=>{const r=cr(f,b);return `<div class="crow ${r>=4.5?'pass':'fail'}"><span class="sw2" style="color:${f};background:${b}">Aa</span><span>${n}</span><b>${r.toFixed(2)}:1 ${r>=4.5?'✓':'✗ too low'}</b></div>`}).join('')}
    ${wt<4.5?`<div class="crow fail"><span class="sw2" style="color:#fff;background:${P.hl}">Aa</span><span>White text on highlight is blocked</span><b>${wt.toFixed(2)}:1</b></div>`:''}</div>`; }
 function bundleBanner(){ const bl=bundleList(); if(!bl.length) return ''; return `<div class="infobox st" style="background:rgba(139,92,246,.07);border-color:rgba(139,92,246,.35)">${ic('lock')}<div><b>Forced rule bundle${bl.length>1?'s':''}: ${esc(bl.map(b=>b.name).join(' · '))}</b><br>These settings are locked for ${esc(subName())}: ${[forcedDisc()?(forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer':'disclaimer'):'', claimsOn()?'no-claims rules':'', kidsForced()?'made for kids + YouTube only':'', forcedWords().length?forcedWords().length+' banned words':''].filter(Boolean).join(' · ')}.${blockedGoal()?` <b style="color:#ffb1b5">Your goal (${esc(G(S.goal).n)}) is blocked for this niche.</b>`:''}</div></div>`; }
+function alcoholWarn(){ if(!M3.isAlcohol(S)) return ''; return `<div class="errbanner st" style="margin-top:12px;background:rgba(255,176,32,.08);border-color:rgba(255,176,32,.5)">${ic('warn')}<div><b>Alcohol niche: no auto-publish to YouTube.</b> ${esc(M3.ALCOHOL_YT)}${S.plat.yt?'':' (YouTube isn\'t selected right now.)'}</div></div>`; }
 function canLock(){ return S.aiAck&&S.compAck&&!blockedGoal(); }
 function versionsList(){ if(!S.versions||!S.versions.length) return ''; return `<div class="verlist st"><span class="muted" style="align-self:center">Locked versions (read-only):</span>${S.versions.slice().sort((a,b)=>a.v-b.v).map(v=>`<button class="badge ${v.v===S.version&&S.locked?'grn':'mute'}" data-act="viewver" data-val="${v.v}" title="Open read-only JSON">${ic('lock')}v${v.v} · ${new Date(v.locked_at).toLocaleDateString([], {month:'short',day:'numeric'})} · ${v.intake_hash.slice(0,8)}</button>`).join('')}</div>`; }
 function curTopic(){ return S.topic===-1?(S.ownTopic||'Your own topic'):(topics()[S.topic]||topics()[0]).t; }
@@ -479,7 +481,7 @@ function costEstimate(){ const w=words(S.dur), ch=Math.round(w*5.8), n=shots(S.d
    <div class="stat g"><b>~${n+sw}<small>images</small></b><span>Grok Imagine stills: ${n} shots + ~${sw} swaps</span></div>
    <div class="stat"><b>~${n}<small>clips</small></b><span>Grok Imagine image→video, one per still</span></div>
    <div class="stat"><b>${S.dur}s</b><span>Final length · −14 LUFS</span></div></div>
-   <p class="muted" style="margin-top:8px">Grok credits depend on your route: the xAI API bills per generation, and SuperGrok has daily generation limits. Check current pricing on your own plans. Re-runs and swaps add to these numbers.</p></div>`; }
+   <p class="muted" style="margin-top:8px">Grok Imagine runs on the xAI API, which bills per generation and has rate limits. Check current pricing on your own xAI and ElevenLabs plans. Re-runs and swaps add to these numbers.</p></div>`; }
 function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S.plat).filter(k=>S.plat[k]);
   return {rule_set_version:S.version,intake_version:S.version, intake_hash:M3.hash(intakeSnapshot()), goal:{id:S.goal,name:g.full||g.n,cta:S.cta},
     niche:{category:S.niche,sub:S.sub,compliance:sb.risk||null}, topic:curTopic(),
