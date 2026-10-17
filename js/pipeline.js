@@ -67,7 +67,9 @@
       if (job.status !== 'done' || st.status !== 'running') return;
       st.output = Object.assign({}, job.output); st.output.hash = M3.hash(job.output); st.inputHash = P.inputHash(p, job.stage);
       if (job.stage === 'publish' && M3.isAlcohol(p.intake)) { st.status = 'needs'; st.ageGate = {plats:(job.output.results || []).map(r => r.plat), confirmed:{}};
-        P.log(p, 'Alcohol bundle: YouTube uploaded private, TikTok sent to inbox drafts, Facebook and Instagram held by 3x3 (nothing sent). Needs you: for each post on each platform, answer age-restricted (Facebook: check the Page\'s age restriction first) or 18+ isn\'t available: keep private / don\'t post. 3x3 never makes alcohol public'); return; }
+        const pl = st.ageGate.plats, held = ['fb','ig'].filter(x => pl.includes(x)).map(x => x === 'fb' ? 'Facebook' : 'Instagram');
+        const parts = [pl.includes('yt') && 'YouTube uploaded private (3x3 leaves it private; visibility is your decision)', pl.includes('tt') && 'TikTok sent to inbox drafts (set 18+ first; visibility is your decision)', held.length && held.join(' and ') + ' held by 3x3 (nothing sent)'].filter(Boolean);
+        P.log(p, 'Alcohol bundle: ' + parts.join(', ') + '. Needs you: for each post on each platform, answer age-restricted' + (pl.includes('fb') ? ' (Facebook: check the Page\'s age restriction first)' : '') + ' or 18+ isn\'t available: keep private / don\'t post'); return; }
       if (sd.approval) { st.status = 'awaiting'; P.log(p, `${sd.n} ready for your approval (output ${st.output.hash.slice(0,8)})`); }
       else { st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), auto:true};
         P.log(p, `${sd.n} done`); const n = P.nextKey(p, job.stage); if (n && p.stages[n].status === 'idle') P.start(p, n); }

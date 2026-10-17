@@ -86,7 +86,7 @@ with sync_playwright() as p:
     ok('alcohol_modes_v26', len(modes) == 4 and all(exp[m.split(':')[0]] in m for m in modes))
     ok('alcohol_needs_you_per_platform_confirm', s == 'needs' and pg.locator('[data-x="ageconfirm"]').count() == 4 and pg.locator('[data-x="agekeep"]').count() == 4)
     logs = E(pg, f"Store.getProject('{pid}').log.map(l=>l.text).join(' | ')")
-    ok('alcohol_upload_log_v27_wording', 'never makes alcohol public' in logs and 'keep private' in logs and 'confirm each post' not in logs)
+    ok('alcohol_upload_log_v28_wording', '3x3 leaves it private; visibility is your decision' in logs and 'TikTok sent to inbox drafts' in logs and 'keep private' in logs and 'never makes alcohol public' not in logs and 'confirm each post' not in logs)
     E(pg, f"Pipeline.download('{pid}')"); pg.wait_for_timeout(300)
     dl = E(pg, f"(()=>{{const st=Store.getProject('{pid}').stages.publish;return {{status:st.status, gate:!!st.ageGate, dl:!!st.downloadedAt, out:!!(st.output&&st.output.downloaded)}}}})()")
     ok('alcohol_download_leaves_publish_not_done', dl == {'status':'needs','gate':True,'dl':True,'out':False})
@@ -184,6 +184,29 @@ with sync_playwright() as p:
       const b=Pipeline.publishTargets(base).map(r=>r.plat+(r.kids?'*':'')).join(); return {a,b}})()""")
     ok('publish_targets_use_compiled_made_for_kids', kr['a'] == 'yt,fb,tt,ig' and kr['b'] == 'yt*')
     ok('tt_direct_uses_compiled_made_for_kids', E(pg, "(()=>{Store.setFlag('tiktok_direct_post_audited',true);const p={intake:{plat:{tt:true},kids:true,niche:'science_space'},rules:{safety:{made_for_kids:false}}};const r=Pipeline.ttDirect(p);p.rules.safety.made_for_kids=true;const r2=Pipeline.ttDirect(p);Store.setFlag('tiktok_direct_post_audited',false);return r&&!r2})()"))
+    # alcohol log names only the selected platforms (no TikTok here)
+    pa = page(); connect(pa); hash(pa, '#/intake/1'); pa.click('[data-set="goal"][data-val="yt_monetization"]'); hash(pa, '#/intake/2')
+    pa.click('[data-set="niche"][data-val="history_culture"]'); pa.wait_for_timeout(200); pa.click('[data-set="sub"][data-val="liquor_history"]'); pa.wait_for_timeout(200)
+    E(pa, "Intake.state.plat={yt:true,fb:true,tt:false,ig:true}"); lock(pa); pa.click('[data-act="create"]'); pa.wait_for_timeout(600); pid2 = E(pa, "location.hash.split('/')[2]"); E(pa, "Sim3x3.speed=3")
+    for k in ['script','stills','video','final']:
+        wait(pa, pid2, k, ('awaiting',)); pa.locator(f'#stage-{k} [data-x="approve"]').click(); pa.wait_for_timeout(300)
+    wait(pa, pid2, 'publish', ('needs',)); pa.locator('[data-x="queue"]').click(); wait(pa, pid2, 'publish', ('needs','done'))
+    alog = E(pa, f"Store.getProject('{pid2}').log.map(l=>l.text).find(t=>t.startsWith('Alcohol bundle'))") or ''
+    ok('alcohol_log_only_selected_platforms', 'TikTok' not in alog and 'YouTube uploaded private' in alog and 'Facebook and Instagram held by 3x3' in alog)
+    ok('alcohol_log_text', alog)
+    # Hackathon topic cases (pass 4 68/75 list and spot-check af42f13 95/120 list), verbatim in tools/hackathon_topic_cases.json
+    HC = json.loads((Path(__file__).resolve().parent / 'hackathon_topic_cases.json').read_text())
+    acc_pos, acc_neg = set(HC['accepted']['pos']), set(HC['accepted']['neg'])
+    for nm, pos, neg in [('68', HC['pos68'], HC['neg75']), ('95', HC['pos95'], HC['neg120'])]:
+        r = E(pa, f"(([pos,neg])=>({{miss:Object.entries(pos).filter(([t,b])=>!M3.topicBundles(t).includes(b)).map(x=>x[0]), fp:[...new Set(neg.filter(t=>M3.topicBundles(t).length))]}}))({json.dumps([pos, neg])})")
+        ok(f'hackathon_topic_{nm}_counts', f"caught {len(pos)-len(r['miss'])}/{len(pos)}, false positives {len(r['fp'])}/{len(set(neg))} (unique); miss {r['miss']}, fp {r['fp']}")
+        ok(f'hackathon_topic_{nm}_only_accepted', set(r['miss']) <= acc_pos and set(r['fp']) <= acc_neg)
+    named = E(pa, """(()=>{const pos=['DOGE','Doge','100X','1000x','1 0 0 x','DOGE army','doge 100x','doge kanye','next 100x','1OOx gem','%63rypto','%D1%81rypto','Doge Palace doge coin pump'];
+      const neg=['Doge Palace gift shop prices','Doge Palace tickets: how to buy',"Doge's Palace Venice",'100x zoom camera','100x microscope money saving','high spirits','evil spirits in folklore','Sol-gel chemistry','wine-dark sea in Homer','Ale-xander the great','soju-less','ale-wife','Soi Cowboy Bangkok','cure-all','Trading cards','Mead lake','Cider press history','Kidnapping of Persephone myth'];
+      return {miss:pos.filter(t=>!M3.topicBundles(t).includes('crypto')), fp:neg.filter(t=>M3.topicBundles(t).length)}})()""")
+    ok('topic_pass4_named_misses_caught', named['miss'] == []); ok('topic_pass4_named_false_positives_clean', named['fp'] == [])
+    if named['miss'] or named['fp']: print(named)
+    ok('banned_cure_all_still_caught_after_hyphen_restriction', E(pa, "M3.bannedHits('Cure-All tonic',['cure']).length===1 && M3.bannedHits('secure procurement',['cure']).length===0"))
     # (5) stuck routine reset card
     ps = page(); hash(ps, '#/connections', 500)
     ok('stuck_card_hidden_by_default', ps.locator('#conn-stuck').count() == 0)

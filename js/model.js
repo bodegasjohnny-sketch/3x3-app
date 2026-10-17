@@ -135,9 +135,17 @@ M.TOPIC_COLLAPSED = {crypto:['crypto','bitcoin','ethereum','dogecoin','solana','
   alcohol:['whisky','whiskey','whiskies','liquor','alcohol','vodka','tequila','bourbon','moonshine','cocktail','brandy','cognac','absinthe','champagne','schnapps','liqueur','hardseltzer'],
   true_crime:['serialkiller','truecrime','murder'], health:[], finance:[], kids:[]};
 M.TOPIC_PATTERNS = {};
-/* ambiguous crypto words only count next to a crypto context word, so 'Doge Palace Venice' and '100x zoom camera' don't flag */
-const CRYPTO_CTX = ['coin','token','crypto','price','moon','pump','wallet','invest','investing','buy','hodl','exchange','trade','trading','profit','gain','return','guaranteed','money','gem','presale','airdrop','meme','memecoin','altcoin','shiba','elon','rich','leverage'];
-M.TOPIC_CONTEXT = {crypto:[/(?:^|[^\p{L}\p{N}])doges?(?![\p{L}\p{N}])/iu, /(?:^|[^a-z0-9])\d{2,}x(?![a-z0-9]{2})/]};
+/* Bare 'doge' and Nx multipliers (10x, 100X, 1000x, 1 0 0 x, 1OOx) flag as crypto UNLESS a clear non-crypto context is present
+   (Doge's Palace / Venice; zoom, lens, camera, microscope…). A strong crypto word (coin, token, to the moon…) flags even then. */
+M.DOGE_RE = /(?:^|[^\p{L}\p{N}])doges?(?![\p{L}\p{N}])/u;
+M.NX_RE = /(?:^|[^\p{L}\p{N}])[1-9][0-9o]+x(?![\p{L}\p{N}]{2})/u;
+const DOGE_NOT = ['palace','palazzo','venice','venetian','venezia','genoa','genoese','republic','ducal','basilica','dandolo','doge of venice','doges of venice'];
+const NX_NOT = ['zoom','lens','magnification','magnify','magnifying','microscope','camera','optical','telephoto','objective','eyepiece','binocular','telescope','loupe','macro','slow motion','slowmo','playback','speed','scope','sensor'];
+const CRYPTO_STRONG = ['coin','token','wallet','hodl','pump','to the moon','airdrop','presale','shib','memecoin','altcoin','leverage'];
+/* phrases removed before matching: common non-alcohol 'spirits', place names, myths, hobby 'trading' */
+M.TOPIC_EXCLUDE = [/(?<![\p{L}\p{N}])(?:high|low|good|evil|ancestral|nature|forest|water|guardian|animal|ghostly|restless|kindred|free|holy|team|school|lifted|raised|ancient|wandering|household|malevolent|benevolent|dark|lost)\s+spirits(?![\p{L}\p{N}])/gu,
+  /(?<![\p{L}\p{N}])(?:lake\s+mead|mead\s+lake)(?![\p{L}\p{N}])/gu, /(?<![\p{L}\p{N}])cider\s+press(?:es|ing)?(?![\p{L}\p{N}])/gu,
+  /(?<![\p{L}\p{N}])trading\s+(?:cards?|posts?|routes?|ships?|compan(?:y|ies))(?![\p{L}\p{N}])/gu, /(?<![\p{L}\p{N}])(?:kidnapping|abduction)\s+of\s+persephone(?![\p{L}\p{N}])/gu];
 /* Greek and Cyrillic capitals that look like Latin capitals; mapped before lower-casing (Ν must read as n, not v) */
 const CAPCONF = {'Α':'a','Β':'b','Ε':'e','Ζ':'z','Η':'h','Ι':'i','Κ':'k','Μ':'m','Ν':'n','Ο':'o','Ρ':'p','Τ':'t','Υ':'y','Χ':'x','Ϲ':'c','І':'i','Ј':'j','Ѕ':'s','Ԁ':'d'};
 const CONF = {'а':'a','е':'e','о':'o','р':'p','с':'c','у':'y','х':'x','к':'k','м':'m','т':'t','в':'b','н':'h','і':'i','ї':'i','ј':'j','ѕ':'s','ԁ':'d','ɡ':'g','ӏ':'l','ո':'n','ս':'u',
@@ -156,37 +164,43 @@ const named = (m, n) => { if (Object.prototype.hasOwnProperty.call(NAMED, n.toLo
 const cp = (n, m) => (n > 0 && n <= 0x10FFFF ? String.fromCodePoint(n) : m);
 M.decodeEntities = t => { let s = String(t || '');
   for (let i = 0; i < 3; i++) { const o = s;
-    s = s.replace(/&#x([0-9a-f]{1,6});?/gi, (m, h) => cp(parseInt(h, 16), m)).replace(/&#(\d{1,7});?/g, (m, d) => cp(parseInt(d, 10), m)).replace(/&([a-z][a-z0-9]{1,31});/gi, named);
+    s = s.replace(/(?:%[0-9a-f]{2})+/gi, m => { try { return decodeURIComponent(m); } catch (e) { return m; } })   // %63rypto
+      .replace(/&#x([0-9a-f]{1,6});?/gi, (m, h) => cp(parseInt(h, 16), m)).replace(/&#(\d{1,7});?/g, (m, d) => cp(parseInt(d, 10), m)).replace(/&([a-z][a-z0-9]{1,31});/gi, named);
     if (s === o) break; }
   return s; };
 /* 1, I, l and | look alike: the 'il' variant maps every l to i (after leet maps 1 to i) and is matched against terms mapped the same way, so 11quor / I1quor / Iiquor read as liquor */
 const IL = x => x.replace(/l/g, 'i');
-M.topicVariants = t => { const d = M.decodeEntities(t), a = M.fold(d), b = M.leet(a), b2 = b.replace(/i/g, 'l');
-  const h = M.fold(d.replace(/[-\u2010-\u2015]+/g, ' ')), hl = M.leet(h);   // hyphens split into words, so cure-all contains 'cure'
-  const words = [a, b, b2, h, hl], col = x => x.replace(/[^\p{L}\p{N}]+/gu, '').replace(/cryptograph\w*/g, '');
-  return {words, collapsed:[a, b, b2].map(col), il:[IL(b), IL(hl)], ilCollapsed:col(IL(b))}; };
+const excl = x => M.TOPIC_EXCLUDE.reduce((s, r) => s.replace(r, ' '), x);
+M.topicVariants = t => { const d = M.decodeEntities(t), a = excl(M.fold(d)), b = excl(M.leet(a));   // i/l lookalikes are handled by the il variant below (4+ letter terms only, so 'Soi' never reads as 'sol')
+  const words = [a, b], col = x => x.replace(/[^\p{L}\p{N}]+/gu, '').replace(/cryptograph\w*/g, '');
+  return {words, collapsed:words.map(col), il:[IL(b)], ilCollapsed:col(IL(b))}; };
+/* banned words only: also split at hyphens, so a banned 'cure' matches 'cure-all' (topic screening doesn't split: Sol-gel, wine-dark, Ale-xander stay clean) */
+M.bannedVariants = t => { const V = M.topicVariants(t), d = M.decodeEntities(t), h = M.fold(d.replace(/[-\u2010-\u2015]+/g, ' ')), hl = M.leet(h);
+  return Object.assign({}, V, {words:V.words.concat([h, hl]), il:V.il.concat([IL(hl)])}); };
 const esc_ = w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const plural = w => { const e = esc_(w).replace(/\s+/g, '\\s+'); if (/\s/.test(w)) return e + '(?:s|es)?'; if (/y$/.test(w)) return e.slice(0, -1) + '(?:y|ys|ies)'; return e + '(?:s|es)?'; };
 M.termRe = terms => new RegExp('(?:^|[^\\p{L}\\p{N}])(?:' + terms.map(plural).join('|') + ')(?![\\p{L}\\p{N}])', 'iu');
 M.TOPIC_RE = Object.fromEntries(Object.entries(M.TOPIC_TERMS).map(([k, v]) => [k, M.termRe(v)]));
-M.TOPIC_RE_IL = Object.fromEntries(Object.entries(M.TOPIC_TERMS).map(([k, v]) => [k, M.termRe(v.map(IL))]));
-const CTX_RE = M.termRe(CRYPTO_CTX);
+/* the 1/I/l variant only for terms of 4+ letters that contain an l (so 'sol' never matches 'Soi', 'ale' never matches 'aie') */
+M.TOPIC_RE_IL = Object.fromEntries(Object.entries(M.TOPIC_TERMS).map(([k, v]) => { const t = v.filter(w => w.length >= 4 && w.includes('l')).map(IL); return [k, t.length ? M.termRe(t) : /(?!)/]; }));
+const DOGE_NOT_RE = M.termRe(DOGE_NOT), NX_NOT_RE = M.termRe(NX_NOT), STRONG_RE = M.termRe(CRYPTO_STRONG);
 M.IMPLIES = {crypto:['finance','crypto']};
 M.topicText = I => (I && I.topic === -1 ? (I.ownTopic || '') : '');
 M.topicBundles = text => { const out = [], V = M.topicVariants(text);
-  const ctx = V.words.some(w => CTX_RE.test(w));
+  const any = r => V.words.some(w => r.test(w)), strong = any(STRONG_RE);
+  const ambiguous = (any(M.DOGE_RE) && (!any(DOGE_NOT_RE) || strong)) || (any(M.NX_RE) && (!any(NX_NOT_RE) || strong));
   Object.keys(M.TOPIC_TERMS).forEach(b => { const hit = V.words.some(w => M.TOPIC_RE[b].test(w) || (M.TOPIC_PATTERNS[b] || []).some(r => r.test(w)))
       || V.il.some(w => M.TOPIC_RE_IL[b].test(w))
       || V.collapsed.some(c => (M.TOPIC_COLLAPSED[b] || []).some(t => c.includes(t)))
-      || (M.TOPIC_COLLAPSED[b] || []).some(t => V.ilCollapsed.includes(IL(t)))
-      || (ctx && V.words.some(w => (M.TOPIC_CONTEXT[b] || []).some(r => r.test(w))));
+      || (M.TOPIC_COLLAPSED[b] || []).some(t => t.length >= 4 && t.includes('l') && V.ilCollapsed.includes(IL(t)))
+      || (b === 'crypto' && ambiguous);
     if (hit) (M.IMPLIES[b] || [b]).forEach(x => out.includes(x) || out.push(x)); });
   return out; };
 M.wordRe = w => M.termRe([w]);
-M.bannedHits = (text, words) => { const V = M.topicVariants(text);
+M.bannedHits = (text, words) => { const V = M.bannedVariants(text);
   return (words || []).filter(w => { if (!w) return false; const re = M.termRe([w.toLowerCase()]); const cw = M.fold(w).replace(/[^\p{L}\p{N}]+/gu, '');
-    const reIl = M.termRe([IL(w.toLowerCase())]);
-    return V.words.some(x => re.test(x)) || V.il.some(x => reIl.test(x)) || ((cw.length >= 6 || (/\d/.test(cw) && cw.length >= 3)) && V.collapsed.some(c => c.includes(cw))); }); };
+    const lw = w.toLowerCase(), reIl = lw.length >= 4 && lw.includes('l') ? M.termRe([IL(lw)]) : null;
+    return V.words.some(x => re.test(x)) || (reIl && V.il.some(x => reIl.test(x))) || ((cw.length >= 6 || (/\d/.test(cw) && cw.length >= 3)) && V.collapsed.some(c => c.includes(cw))); }); };
 M.needsNoClaims = I => M.CLAIM_NICHES.includes(I.niche) || M.CLAIM_SUBS.includes(I.sub) || M.topicBundles(M.topicText(I)).some(b => ['crypto','finance','health'].includes(b));
 M.BANNED_PRESET = {
   health_nutrition:['cure','treat','prevent','heal','detox','miracle','guaranteed'],

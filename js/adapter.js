@@ -21,13 +21,13 @@
                        never in this table or the browser; xAI/ElevenLabs
                        keys live only in the user's Grok Bot)
 
-   Flow in production (architecture v2.3, Option A):
+   Flow in production (architecture v2.8; Option A token custody, §7.1):
      0. Worker onboarding: routine webhook URL + routine key -> save-routine-key
         (key to Vault, only last 4 shown); signing secret generated server-side,
         shown once, stored by the user in their bot as THREEX3_SIGNING_SECRET.
         Social sign-ins: official OAuth in the user's browser -> tokens to Vault.
      1. dispatchJob() inserts a row in `jobs`.
-     2. PLANNED (architecture v2.4 §2.1, not built; simulated here): a server
+     2. PLANNED (architecture v2.8 §2.1, not built; simulated here): a server
         function signs the dispatch envelope with the app's Ed25519 private key
         (Vault, never leaves the server) and POSTs it to the user's routine
         webhook. The routine verifies it against a key set signed by two offline
