@@ -13,6 +13,8 @@ with sync_playwright() as p:
         pg.on('dialog', lambda d: (dialogs.append(d.message), d.accept())); pg.on('pageerror', lambda e: errs.append(str(e)))
         pg.goto(BASE + '#/intake/1'); pg.evaluate('localStorage.clear()'); pg.reload(); pg.wait_for_timeout(500); return pg
     E = lambda pg, js: pg.evaluate(js)
+    AX = {}
+    def axe_on(pg, name): pg.add_script_tag(content=AXE); AX[name] = E(pg, "axe.run(document,{resultTypes:['violations']}).then(r=>r.violations.filter(v=>['serious','critical'].includes(v.impact)).map(v=>({id:v.id,n:v.nodes.length,t:v.nodes.slice(0,3).map(n=>n.target.join(' '))})))")
     def hash(pg, h, t=400): E(pg, f"location.hash={json.dumps(h)}"); pg.wait_for_timeout(t)
     def connect(pg):
         hash(pg, '#/connections')
@@ -79,14 +81,77 @@ with sync_playwright() as p:
         wait(pg, pid, k, ('awaiting',)); pg.locator(f'#stage-{k} [data-x="approve"]').click(); pg.wait_for_timeout(300)
     wait(pg, pid, 'publish', ('needs',)); pg.locator('[data-x="queue"]').click(); s = wait(pg, pid, 'publish', ('needs','done'))
     modes = E(pg, f"Store.getProject('{pid}').stages.publish.output.results.map(r=>r.plat+': '+r.mode)")
-    ok('alcohol_modes', modes); ok('alcohol_all_private', all(('private' in m or 'unpublished' in m or 'held' in m) for m in modes) and len(modes) == 4)
-    ok('alcohol_needs_you_age_gate', s == 'needs' and pg.locator('[data-x="age18"]').count() == 4 and pg.is_disabled('[data-x="ageconfirm"]'))
-    pg.locator('#stage-publish').scroll_into_view_if_needed(); pg.screenshot(path=str(O/'31-alcohol-age-gate.png'))
-    for i in range(4): pg.locator('[data-x="age18"]').nth(i).check(); pg.wait_for_timeout(150)
-    pg.click('[data-x="ageconfirm"]'); pg.wait_for_timeout(300); ok('alcohol_done_after_18_confirm', wait(pg, pid, 'publish', ('done',), 3) == 'done')
+    ok('alcohol_modes', modes)
+    exp = {'yt':'uploaded private', 'tt':'TikTok inbox', 'fb':'held by 3x3', 'ig':'held by 3x3'}
+    ok('alcohol_modes_v26', len(modes) == 4 and all(exp[m.split(':')[0]] in m for m in modes))
+    ok('alcohol_needs_you_per_platform_confirm', s == 'needs' and pg.locator('[data-x="ageconfirm"]').count() == 4)
+    pg.locator('#stage-publish').scroll_into_view_if_needed(); pg.screenshot(path=str(O/'31-alcohol-age-gate.png')); axe_on(pg, 'project-alcohol-age-gate')
+    pg.click('[data-x="ageconfirm"][data-p="fb"]'); pg.wait_for_timeout(300)
+    after = E(pg, f"(()=>{{const st=Store.getProject('{pid}').stages.publish;return {{status:st.status, fb:st.output.results.find(r=>r.plat==='fb').mode, call:st.ageGate.confirmed.fb, left:document.querySelectorAll('[data-x=\"ageconfirm\"]').length}}}})()")
+    ok('alcohol_fb_confirm_calls_confirm_age_gate', after['call']['rpc'] == 'confirm_age_gate' and after['call']['platform'] == 'fb')
+    ok('alcohol_fb_server_publish_age_min_ai_flag', 'age_min=18' in after['fb'] and 'is_ai_generated=true' in after['fb'])
+    ok('alcohol_still_needs_after_one_confirm', after['status'] == 'needs' and after['left'] == 3)
+    ok('alcohol_fb_manual_age_check_required', pg.locator('[data-x="fbcheck"]').count() == 1)
+    pg.click('[data-x="agekeep"][data-p="yt"]'); pg.wait_for_timeout(250)
+    ytm = E(pg, f"Store.getProject('{pid}').stages.publish.output.results.find(r=>r.plat==='yt').mode")
+    ok('alcohol_yt_keep_private_never_public', 'kept private' in ytm and 'never made public' in ytm)
+    ok('alcohol_no_keep_private_for_fb_ig', pg.locator('[data-x="agekeep"][data-p="fb"], [data-x="agekeep"][data-p="ig"]').count() == 0)
+    for x in ['tt','ig']: pg.click(f'[data-x="ageconfirm"][data-p="{x}"]'); pg.wait_for_timeout(250)
+    ok('alcohol_not_done_until_fb_checked', E(pg, f"Store.getProject('{pid}').stages.publish.status") == 'needs')
+    pg.locator('#stage-publish').scroll_into_view_if_needed(); pg.screenshot(path=str(O/'31b-alcohol-fb-check.png'))
+    pg.click('[data-x="fbcheck"]'); pg.wait_for_timeout(250)
+    ok('alcohol_done_after_all_confirms_and_fb_check', wait(pg, pid, 'publish', ('done',), 3) == 'done')
+    # 4c. kids flag must not carry over: kids -> true crime -> liquor_history -> lock
+    pk = page(); hash(pk, '#/intake/2'); pk.click('[data-set="niche"][data-val="kids_learning"]'); pk.wait_for_timeout(200)
+    k1 = E(pk, "Intake.snapshot().kids")
+    pk.click('[data-set="niche"][data-val="mystery"]'); pk.wait_for_timeout(200); pk.click('[data-set="sub"][data-val="true_crime_historical"]'); pk.wait_for_timeout(200)
+    k2 = E(pk, "[Intake.snapshot().kids, JSON.stringify(Intake.snapshot().plat)]")
+    pk.click('[data-set="niche"][data-val="history_culture"]'); pk.wait_for_timeout(200); pk.click('[data-set="sub"][data-val="liquor_history"]'); pk.wait_for_timeout(200)
+    hash(pk, '#/intake/1'); pk.click('[data-set="goal"][data-val="yt_monetization"]'); pk.wait_for_timeout(150)
+    ok('kids_on_in_kids_niche', k1 is True); ok('kids_off_after_true_crime', k2[0] is False and k2[1] != '{"yt":true,"fb":false,"tt":false,"ig":false}')
+    ok('kids_lock_liquor', lock(pk)); kr = E(pk, "Intake.state.versions.slice(-1)[0].rules.safety")
+    ok('kids_false_after_kids_truecrime_liquor_lock', kr['made_for_kids'] is False)
+    hash(pk, '#/intake/9'); pk.click('[data-act="newversion"]'); pk.wait_for_timeout(300); hash(pk, '#/intake/2')
+    pk.click('[data-set="niche"][data-val="kids_learning"]'); pk.wait_for_timeout(200)
+    Path('/tmp/nokids.json').write_text(json.dumps({"app":"3x3","intake":{"goal":"yt_monetization","niche":"science_space","plat":{"yt":True}}}))
+    E(pk, 'Intake.state.aiAck=true'); hash(pk, '#/intake/9'); pk.set_input_files('#impFile', '/tmp/nokids.json'); pk.wait_for_timeout(500)
+    ok('import_without_kids_field_is_false', E(pk, "Intake.snapshot().kids") is False)
+    # 4d. topic evasion
+    ev = E(pk, """(()=>{const pos={'c r y p t o coins':'crypto','crypt0':'crypto','cryp-to':'crypto','Bitcoins':'crypto','whiskies':'alcohol','\u0441rypto':'crypto','\uff43\uff52\uff59\uff50\uff54\uff4f':'crypto','Doge':'crypto','Solana':'crypto','10x gains':'crypto','1 0 0 x':'crypto','moonshine':'alcohol','liquors':'alcohol','b1tc01n':'crypto'};
+      const neg=['Beginner budgeting','How engines work','Origin of the drum','Spectrum of light','Livestock farming','Solar system','Cryptography basics','Holy spirit','Gingerbread','Rumors debunked','4x4 trucks'];
+      return {miss:Object.entries(pos).filter(([t,b])=>!M3.topicBundles(t).includes(b)).map(x=>x[0]), fp:neg.filter(t=>M3.topicBundles(t).length), banned:M3.bannedHits('1 0 0 x g u a r a n t e e d',['guaranteed','100x'])}})()""")
+    ok('topic_evasion_caught', ev['miss'] == []); ok('topic_no_false_positives', ev['fp'] == []); ok('topic_spaced_banned_words', sorted(ev['banned']) == ['100x','guaranteed'])
+    if ev['miss'] or ev['fp']: print(ev)
+    # 4e. routine key / URL rules
+    kc = E(pk, "[M3.checkKey('test-abc').ok, M3.checkKey('test_abc').ok, M3.checkUrl('https://user:pass@bot.example.test/hook').ok, M3.checkUrl('https://bot.example.test/hook').ok]")
+    ok('routine_key_rules', kc == [False, True, False, True])
+    hash(pk, '#/intake/6'); E(pk, "Intake.rerender()")
+    ok('maxlength_on_text_inputs', E(pk, "[...document.querySelectorAll('#content input.inp[data-in]')].filter(i=>i.type==='text'||!i.type).every(i=>i.maxLength>0)"))
+    # 4b. TikTok audit: inbox before; after audit, non-alcohol direct post needs a privacy choice (no default)
+    pg3 = page(); connect(pg3); E(pg3, "Intake.state.plat={yt:false,fb:false,tt:true,ig:false}; Intake.state.aiAck=true")
+    lock(pg3); pg3.click('[data-act="create"]'); pg3.wait_for_timeout(600); pid3 = E(pg3, "location.hash.split('/')[2]"); E(pg3, "Sim3x3.speed=3")
+    for k in ['script','stills','video','final']:
+        wait(pg3, pid3, k, ('awaiting',)); pg3.locator(f'#stage-{k} [data-x="approve"]').click(); pg3.wait_for_timeout(300)
+    wait(pg3, pid3, 'publish', ('needs',))
+    ok('tiktok_inbox_before_audit', 'inbox' in E(pg3, f"Pipeline.publishTargets(Store.getProject('{pid3}'))[0].mode") and pg3.locator(f'#ttpriv-{pid3}').count() == 0)
+    pg3.click('[data-x="ttaudit"]'); pg3.wait_for_timeout(300)
+    axe_on(pg3, 'project-tiktok-privacy-dropdown')
+    ok('tiktok_privacy_dropdown_no_default', E(pg3, f"document.getElementById('ttpriv-{pid3}').value") == '')
+    pg3.click('[data-x="queue"]'); pg3.wait_for_timeout(300); ok('tiktok_queue_blocked_without_privacy', E(pg3, f"Pipeline.eff(Store.getProject('{pid3}'),'publish')") == 'needs')
+    pg3.select_option(f'#ttpriv-{pid3}', 'FOLLOWER_OF_CREATOR'); pg3.click('[data-x="queue"]'); wait(pg3, pid3, 'publish', ('done',))
+    ok('tiktok_direct_post_with_chosen_privacy', E(pg3, f"Store.getProject('{pid3}').stages.publish.output.results[0].mode"))
+    pg3.locator('#stage-publish').scroll_into_view_if_needed(); pg3.screenshot(path=str(O/'33-tiktok-after-audit.png'))
+    # 4f. rapid regenerate: one active job per step, charged once
+    E(pg, "Store.resetSpend()"); before = E(pg, "Store.listJobs().length")
+    E(pg, f"(()=>{{for(let i=0;i<15;i++) Pipeline.regenerate('{pid}','stills')}})()"); pg.wait_for_timeout(200)
+    rr = E(pg, f"[Store.listJobs().length, Store.spentToday(), M3.stageCost('stills', Store.getProject('{pid}').intake)]")
+    ok('rapid_regenerate_one_job', rr[0] - before == 1); ok('rapid_regenerate_charged_once', abs(rr[1] - rr[2]) < 1e-6)
+    wait(pg, pid, 'stills', ('awaiting',))
     # 5. spend cap: burst of jobs pauses at $20
     E(pg, "Store.resetSpend()"); pid2 = pid
-    E(pg, f"(()=>{{for(let i=0;i<40;i++) Pipeline.start(Store.getProject('{pid2}'),'video',{{force:true}})}})()"); pg.wait_for_timeout(300)
+    for i in range(6):
+        E(pg, f"Pipeline.start(Store.getProject('{pid2}'),'video',{{force:true}})"); wait(pg, pid2, 'video', ('awaiting','needs','failed'))
+        if E(pg, f"!!Store.getProject('{pid2}').stages.video.capHit"): break
     sp = E(pg, "Store.spentToday()"); st = E(pg, f"Store.getProject('{pid2}').stages.video")
     ok('cap_spend_le_20', sp <= 20.0001); ok('cap_needs_you', st['status'] == 'needs' and bool(st.get('capHit')))
     pg.locator('#stage-video').scroll_into_view_if_needed(); pg.wait_for_timeout(300); pg.screenshot(path=str(O/'32-spend-cap-needs-you.png'))
@@ -97,7 +162,7 @@ with sync_playwright() as p:
     E(pg, "Intake.state.aiAck=true"); hash(pg, '#/intake/9', 500); axe('intake9'); lock(pg); axe('intake9-locked')
     pg.click('[data-act="create"]'); pg.wait_for_timeout(1500); axe('project')
     for h in ['#/projects', '#/connections', '#/onboarding']: hash(pg, h, 500); axe(h)
-    serious = {k: v for k, v in A.items() if v}; ok('axe_no_serious_critical', not serious)
+    A.update(AX); serious = {k: v for k, v in A.items() if v}; ok('axe_no_serious_critical', not serious)
     if serious: print(json.dumps(serious, indent=1))
     pg2 = page(); hash(pg2, '#/intake/8', 500)
     pg2.locator('.tog[data-val="noClaims"], .tog[data-val="kids"]').first.focus(); pg2.keyboard.press('Space'); pg2.wait_for_timeout(300)
@@ -106,6 +171,16 @@ with sync_playwright() as p:
     ok('focus_kept_after_card_pick', E(pg2, "document.activeElement.dataset.set==='dur'"))
     hash(pg2, '#/intake/6', 500); pg2.locator('.hex').first.focus()
     ok('hex_focus_ring', E(pg2, "(()=>{const c=getComputedStyle(document.activeElement);return c.outlineStyle!=='none'&&parseFloat(c.outlineWidth)>0})()"))
+    # 6b. axe at 390px
+    mm = page(390, 844); connect(mm)
+    for i in [1, 6, 8]:
+        hash(mm, f'#/intake/{i}', 500); mm.add_script_tag(content=AXE); A[f'390-intake{i}'] = E(mm, "axe.run(document,{resultTypes:['violations']}).then(r=>r.violations.filter(v=>['serious','critical'].includes(v.impact)).map(v=>({id:v.id,n:v.nodes.length,t:v.nodes.slice(0,3).map(n=>n.target.join(' '))})))")
+    E(mm, "Intake.state.aiAck=true"); lock(mm); mm.click('[data-act="create"]'); mm.wait_for_timeout(2500)
+    for h in [None, '#/connections', '#/onboarding']:
+        if h: hash(mm, h, 500)
+        mm.add_script_tag(content=AXE); A['390-' + (h or 'project')] = E(mm, "axe.run(document,{resultTypes:['violations']}).then(r=>r.violations.filter(v=>['serious','critical'].includes(v.impact)).map(v=>({id:v.id,n:v.nodes.length,t:v.nodes.slice(0,3).map(n=>n.target.join(' '))})))")
+    serious390 = {k: v for k, v in A.items() if k.startswith('390') and v}; ok('axe_390_no_serious_critical', not serious390)
+    if serious390: print(json.dumps(serious390, indent=1))
     # 7. mobile banner
     m = page(390, 844); hash(m, '#/intake/8', 500); m.mouse.wheel(0, 3000); m.wait_for_timeout(400)
     bn = E(m, "(()=>{const t=document.querySelector('.testbar'),s=t.querySelector('span'),r=t.getBoundingClientRect();return {top:r.top,spanVisible:getComputedStyle(s).display!=='none'&&s.offsetHeight>0,scrollY:scrollY}})()")

@@ -54,7 +54,7 @@ function artifact(p, k){
     case 'publish': return o.downloaded ? `<div class="art"><b>${ic('dl')} Downloaded</b> <span class="muted">(test build: project manifest JSON; the real build delivers the MP4)</span></div>`
       : `<div class="art"><b>${ic('check')} Sent to 3x3's publish-broker</b> <span class="muted">(server-side, official APIs, simulated: nothing was posted)</span>
         <div class="pubres">${(o.results||[]).map(r => `<div class="kv"><span>${PLATN[r.plat]}</span><b>${esc(r.mode)} · ${esc(r.account||'')}${r.plat==='tt'&&p.intake.dur<=60?` · <span class="badge warn">${esc(M3.REACH_ONLY)}</span>`:''}${r.plat==='yt'&&(p.rules.rule_bundles_applied||[]).includes('kids')?' · <span class="badge cyan">Made for Kids</span>':''}</b></div>`).join('')}</div>
-        ${M3.isAlcohol(p.intake)?`<div class="infobox" style="margin-top:8px">${ic('lock')}<div>Alcohol bundle: private drafts only, no affiliate or retailer links, disclaimer on screen: “${esc(((p.rules.safety||{}).disclaimer||{}).text||'')}”.</div></div>`:''}</div>`;
+        ${M3.isAlcohol(p.intake)?`<div class="infobox" style="margin-top:8px">${ic('lock')}<div>Alcohol bundle: never auto-published, each post confirmed per platform, no affiliate or retailer links, disclaimer on screen: “${esc(((p.rules.safety||{}).disclaimer||{}).text||'')}”.</div></div>`:''}</div>`;
   }
   return '';
 }
@@ -64,13 +64,18 @@ function stageActions(p, k){
   if (e === 'running') return `<div class="sact"><span class="spin"></span><span class="muted">${k==='publish'?'3x3\'s publish-broker is posting through the official APIs (simulated)…':'Your Grok Bot worker is on it (simulated)…'}</span></div>`;
   if (e === 'needs' && st.choice) { const miss = Pipeline.publishMissing(p);
     return `<div class="sact col"><div class="needbox" style="background:rgba(22,199,132,.06);border-color:rgba(22,199,132,.3)">${ic('info')}<div>${esc(M3.PUBLISH_NOTE)}${p.intake.plat.tt?' '+esc(M3.TIKTOK_NOTE):''}</div></div><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn pri" data-x="download" data-id="${id}">${ic('dl')}Download</button><button class="btn" data-x="queue" data-id="${id}">${ic('rocket')}Approve & queue for publish</button></div>
+      ${Pipeline.ttDirect(p)?`<label class="field" style="max-width:340px"><span>TikTok: who can view this video? (required, no default)</span><select class="inp" id="ttpriv-${id}"><option value="" selected disabled>Choose who can view…</option>${M3.TT_PRIVACY.map(([v,n]) => `<option value="${v}">${n}</option>`).join('')}</select></label>`:''}
       ${miss.length?`<div class="needbox">${ic('warn')}<div>Publishing needs ${miss.map(c => `<b>${esc(M3.conn(c).n)}</b>`).join(', ')} connected in this browser. 3x3's server publishes only through the official APIs (YouTube Data API, Meta Graph, TikTok Content Posting API).<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${fixLinks(miss)}</div></div></div>`:''}</div>`; }
   if (e === 'needs' && st.capHit) { const h = st.capHit; return `<div class="sact col"><div class="needbox">${ic('dollar')}<div><b>Needs you: daily spend cap reached.</b> Estimated spend today is $${Store.spentToday().toFixed(2)} of your $${h.cap}/day cap, and ${sd.n} costs about $${h.cost.toFixed(2)}. It can run tomorrow (the cap resets at midnight, Asia/Manila). <span class="muted">(Simulated ledger. In production the server and your bot enforce the cap.)</span>
       <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn sm" data-x="retry" data-id="${id}" data-k="${k}">${ic('refresh')}Try again</button><button class="btn sm ghost" data-x="resetspend" data-id="${id}" data-k="${k}">${ic('bolt')}Simulate a new day (test)</button></div></div></div></div>`; }
-  if (e === 'needs' && st.ageGate) { const g = st.ageGate, all = g.plats.every(x => g.ticked[x]);
-    return `<div class="sact col"><div class="needbox">${ic('warn')}<div><b>Needs you: set the 18+ age limit.</b> Every upload is a private draft. In each platform's own app, set the age limit, then tick it here. Then publish it yourself in that app.
-      <div class="agebox">${g.plats.map(x => `<label><input type="checkbox" data-x="age18" data-id="${id}" data-p="${x}" ${g.ticked[x]?'checked':''}><span><b>I set 18+ on ${PLATN[x]}</b><small>${esc(M3.ALCOHOL_STEPS[x])}</small></span></label>`).join('')}</div>
-      <div class="row" style="gap:6px;margin-top:8px"><button class="btn sm pri" data-x="ageconfirm" data-id="${id}" ${all?'':'disabled'}>${ic('check')}Confirm 18+ is set</button></div></div></div></div>`; }
+  if (e === 'needs' && st.ageGate) { const g = st.ageGate;
+    const badge = x => { const c = g.confirmed[x]; if (!c) return '<span class="badge warn">Waiting for you</span>'; if (c.decision === 'keep_private') return '<span class="badge mute">Kept private</span>';
+      if (x === 'fb' && !g.fbChecked) return '<span class="badge warn">Published · check 18+ in Facebook</span>'; return `<span class="badge grn">Confirmed ${fmtT(c.at)}</span>`; };
+    const btns = x => { const c = g.confirmed[x];
+      if (!c) return `<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm pri" data-x="ageconfirm" data-id="${id}" data-p="${x}">${ic('check')}${x === 'yt' || x === 'tt' ? `18+ applied: confirm this ${PLATN[x]} post` : `Confirm this ${PLATN[x]} post`}</button>${x === 'yt' || x === 'tt' ? `<button class="btn sm ghost" data-x="agekeep" data-id="${id}" data-p="${x}">${ic('lock')}18+ not available: keep private</button>` : ''}</div>`;
+      if (x === 'fb' && !g.fbChecked) return `<button class="btn sm pri" data-x="fbcheck" data-id="${id}">${ic('check')}I checked: 18+ is applied in Facebook</button>`; return ''; };
+    return `<div class="sact col"><div class="needbox">${ic('warn')}<div><b>Needs you: confirm each alcohol post.</b> Nothing is auto-published. Confirm every post on every platform, one at a time. <span class="muted">(Each Confirm or Keep private button simulates the server call confirm_age_gate.)</span>
+      <div class="agebox">${g.plats.map(x => `<div class="agerow"><div><b>${PLATN[x]}</b> ${badge(x)}<small>${esc(M3.ALCOHOL_STEPS[x])}</small></div>${btns(x)}</div>`).join('')}</div></div></div></div>`; }
   if (e === 'needs') return `<div class="sact col"><div class="needbox">${ic('warn')}<div><b>Needs you:</b> ${sd.n} can't run until ${st.missing.map(c => `<b>${esc(M3.connLabelMissing(c, Store.getConnection(c)))}</b>`).join(', ')} ${st.missing.length>1?'are':'is'} connected. It resumes on its own once connected.
       <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${fixLinks(st.missing)}<button class="btn sm ghost" data-x="force" data-id="${id}" data-k="${k}" title="Test only">${ic('bolt')}Simulate anyway (test)</button></div></div></div></div>`;
   if (e === 'failed') return `<div class="sact col"><div class="errbox">${ic('x')}<span>${esc(st.error||'Failed')}</span></div><div class="row" style="gap:8px"><button class="btn pri" data-x="retry" data-id="${id}" data-k="${k}">${ic('refresh')}Retry</button></div></div>`;
@@ -102,11 +107,11 @@ function project(id){
       <div class="needs">${all.map(c => `<span class="ntag ${M3.isOk(conns[c])?'ok':'no'}">${M3.isOk(conns[c])?ic('check'):ic('x')}${esc(M3.conn(c).n)}</span>`).join('')}</div></div>${chip(e)}</div>
       ${artifact(p, s.k)}${stageActions(p, s.k)}</section>`; }).join('')}</div>
   <div class="grid g2" style="margin-top:18px;align-items:start">
-    <div class="panel"><div class="lbl" style="margin-top:0">${ic('list')}Activity</div><div class="log">${(p.log||[]).slice(0,25).map(l => `<div><span>${fmtT(l.at)}</span>${esc(l.text)}</div>`).join('')}</div></div>
+    <div class="panel"><div class="lbl" style="margin-top:0">${ic('list')}Activity</div><div class="log" tabindex="0" role="log" aria-label="Project activity">${(p.log||[]).slice(0,25).map(l => `<div><span>${fmtT(l.at)}</span>${esc(l.text)}</div>`).join('')}</div></div>
     <div class="panel testtools"><div class="lbl" style="margin-top:0">${ic('wand')}Test tools <span class="badge warn" style="text-transform:none;letter-spacing:0">Simulation only</span></div>
       <p class="muted">No real jobs run. A simulator stands in for your Grok Bot worker. Things to try: approve through to Final, then <b>Swap</b> one still. Video and Final switch to <b>Re-approval needed</b>.</p>
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sm ${Sim3x3.failNext?'pri':''}" data-x="failnext">${ic('x')}${Sim3x3.failNext?'Next job will fail ✓':'Make next job fail'}</button>
-      <button class="btn sm" data-x="speed">${ic('bolt')}Speed ${Sim3x3.speed}×</button><button class="btn sm" data-x="reset" data-id="${p.id}">${ic('refresh')}Reset simulation</button><button class="btn sm danger" data-x="delproject" data-id="${p.id}">${ic('trash')}Delete project</button></div></div>
+      <button class="btn sm ${Store.getFlags().tiktok_direct_post_audited?'pri':''}" data-x="ttaudit">${ic('bolt')}${Store.getFlags().tiktok_direct_post_audited?'TikTok audit passed ✓ (simulated)':'Simulate: TikTok audit passed'}</button><button class="btn sm" data-x="speed">${ic('bolt')}Speed ${Sim3x3.speed}×</button><button class="btn sm" data-x="reset" data-id="${p.id}">${ic('refresh')}Reset simulation</button><button class="btn sm danger" data-x="delproject" data-id="${p.id}">${ic('trash')}Delete project</button></div></div>
   </div>`;
 }
 
@@ -117,8 +122,8 @@ function workerCard(focus){
   let body = '';
   if (status === 'missing' || status === 'relogin') body = `
     <ol class="wsteps"><li class="on"><b>Step 1.</b> In Grok Bot, create the 3x3 routine from our template. Copy its webhook URL and routine key, and paste them below.</li></ol>
-    <label class="field"><span>Routine webhook URL</span><input class="inp" id="w-url" placeholder="https://… (your 3x3 routine's webhook)" autocomplete="off" spellcheck="false"></label>
-    <label class="field"><span>Routine key <em class="testtag">Test mode: fake values starting with test_ only</em></span><input class="inp" id="w-key" type="password" placeholder="test_routine_1" autocomplete="off" spellcheck="false" aria-describedby="w-keyhelp"></label>
+    <label class="field"><span>Routine webhook URL</span><input class="inp" id="w-url" maxlength="300" placeholder="https://… (your 3x3 routine's webhook)" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>Routine key <em class="testtag">Test mode: fake values starting with test_ only</em></span><input class="inp" id="w-key" type="password" maxlength="46" placeholder="test_routine_1" autocomplete="off" spellcheck="false" aria-describedby="w-keyhelp"></label>
     <p class="muted" id="w-keyhelp" style="margin:-4px 0 10px">We store the key encrypted on our server. After you save, we only show its last 4 characters. <span class="testtag" style="margin:0">Test mode stores nothing real: only the last 4 characters stay in this browser.</span></p>
     <button class="btn pri" data-x="wsave">${ic('check')}Save and continue</button><div class="ferr ${W.err?'on':''}" id="err-worker">${esc(W.err||'')}</div>`;
   else if (status === 'pending') body = `
@@ -187,7 +192,7 @@ function oauthModal(){ const m = Pages._oauth; if (!m) return ''; const c = M3.c
     <p>Choose ${c.id==='facebook'?'a Page':'an account'} to continue to <b>3x3</b></p>
     ${c.id==='facebook'
       ? `<label class="field"><span>Page</span><select class="inp" id="oauth-acct"><option>Healthy Bites PH (Page)</option><option>Johnny Bodegas (Page)</option></select></label>`
-      : `<label class="field"><span>Account</span><input class="inp" id="oauth-acct" value="${esc(c.acct)}"></label>`}
+      : `<label class="field"><span>Account</span><input class="inp" id="oauth-acct" maxlength="60" value="${esc(c.acct)}"></label>`}
     <div class="perm"><b>3x3 wants to:</b><p>${esc(c.perms)}</p></div>
     <p class="muted" style="font-size:12px">Test mode: no real sign-in happens and no password is asked for. In production this is ${esc(c.provider)}'s own consent screen, and the access token goes to 3x3's server, encrypted. Your Grok Bot never sees it.</p>
     <div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn ghost" data-x="oauthcancel">Cancel</button><button class="btn pri" data-x="oauthallow">${ic('check')}Allow</button></div></div></div>`; }

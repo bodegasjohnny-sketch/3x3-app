@@ -40,7 +40,7 @@
    ===================================================================== */
 (function(){
   const NS = '3x3.v1.';
-  const KEYS = ['draft','projects','jobs','connections','onboarding','ledger'];
+  const KEYS = ['draft','projects','jobs','connections','onboarding','ledger','flags'];
   const read = (k, d) => { try { const v = localStorage.getItem(NS+k); return v ? JSON.parse(v) : d; } catch(e){ return d; } };
   const write = (k, v) => localStorage.setItem(NS+k, JSON.stringify(v));
   const uid = p => p + '_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
@@ -89,6 +89,10 @@
       Object.assign(j, patch, {updated_at:new Date().toISOString()}); write('jobs', all);
       this.emit({type:'job', job:j}); return j;
     }
+
+    /* ---- app flags (simulated; production: app_flags table, e.g. tiktok_direct_post_audited) ---- */
+    getFlags(){ return read('flags', {}); }
+    setFlag(k, v){ write('flags', Object.assign(read('flags', {}), {[k]: v})); this.emit({type:'flags'}); }
 
     /* ---- spend ledger (LOCAL ONLY demo of the $/day cap; production: server-side ledger table + the user's bot) ---- */
     today(){ return new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Manila'}); }

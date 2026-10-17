@@ -25,6 +25,8 @@
       if (r.ai_disclosure && r.ai_disclosure.on_screen_tag) L.push('On-screen "AI-generated" tag'); if (r.affiliate_disclosure) L.push('Affiliate line: ' + r.affiliate_disclosure.text); return L; },
     start(p, k, opts={}){
       p = Store.getProject(p.id); const st = p.stages[k]; const sd = M3.stage(k);
+      /* one active job per step: ignore repeat clicks while a job is queued or running (never charge twice) */
+      if (st.status === 'running' && st.jobId) { const j = Store.getJob(st.jobId); if (j && (j.status === 'queued' || j.status === 'running')) return; }
       if (k === 'publish' && !opts.queue) { Object.assign(st, {status:'needs', choice:true, missing:[], inputHash:P.inputHash(p, k), error:null}); P.log(p, 'Final approved. Choose Download or Queue for publish'); return; }
       const miss = k === 'publish' ? P.publishMissing(p) : P.missing(p, k);
       if (miss.length && !opts.force) { Object.assign(st, {status:'needs', missing:miss, choice:false, error:null});
@@ -49,8 +51,9 @@
         const c = M3.CONNS.find(cc => cc.plat === x), acct = (conns[c.id] || {}).account || c.acct;
         let mode = 'public';
         if (alc) mode = M3.ALCOHOL_MODES[x];
-        else if (x === 'tt') mode = 'private draft (TikTok audit pending)';
+        else if (x === 'tt') mode = P.ttDirect(p) && p.stages.publish.ttPrivacy ? 'direct post (audited) · privacy ' + p.stages.publish.ttPrivacy : 'uploaded to your TikTok inbox (draft): you post it in the app';
         return {plat:x, mode, account:acct, kids: kids && x === 'yt', reach_only: x === 'tt' && I.dur <= 60}; }); },
+    ttDirect(p){ const I = p.intake; return !!Store.getFlags().tiktok_direct_post_audited && !M3.isAlcohol(I) && !!I.plat.tt && !((p.rules.rule_bundles_applied||[]).includes('kids') || I.kids); },
     publishMissing(p){ const conns = Store.getConnections(); const ids = [];
       P.publishTargets(p).forEach(t => ids.push(M3.CONNS.find(c => c.plat === t.plat).id)); if (p.intake.plat.ig && ids.includes('instagram')) ids.push('facebook');
       return ids.filter((v,i,a) => a.indexOf(v) === i && !M3.isOk(conns[v])); },
@@ -61,8 +64,8 @@
       if (job.status === 'failed') { if (st.status === 'failed') return; if (st.cost) { Store.addSpend(-st.cost); st.cost = 0; } Object.assign(st, {status:'failed', error:job.error}); P.log(p, `${sd.n} failed: ${job.error}`); return; }
       if (job.status !== 'done' || st.status !== 'running') return;
       st.output = Object.assign({}, job.output); st.output.hash = M3.hash(job.output); st.inputHash = P.inputHash(p, job.stage);
-      if (job.stage === 'publish' && M3.isAlcohol(p.intake)) { st.status = 'needs'; st.ageGate = {plats:(job.output.results || []).map(r => r.plat), ticked:{}};
-        P.log(p, 'Uploaded as private drafts on every platform (alcohol bundle). Needs you: set 18+ in each platform app, then confirm'); return; }
+      if (job.stage === 'publish' && M3.isAlcohol(p.intake)) { st.status = 'needs'; st.ageGate = {plats:(job.output.results || []).map(r => r.plat), confirmed:{}};
+        P.log(p, 'Alcohol bundle: YouTube uploaded private, TikTok sent to inbox drafts, Facebook and Instagram held by 3x3. Needs you: confirm each post on each platform'); return; }
       if (sd.approval) { st.status = 'awaiting'; P.log(p, `${sd.n} ready for your approval (output ${st.output.hash.slice(0,8)})`); }
       else { st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), auto:true};
         P.log(p, `${sd.n} done`); const n = P.nextKey(p, job.stage); if (n && p.stages[n].status === 'idle') P.start(p, n); }
@@ -73,14 +76,25 @@
       P.log(p, `${M3.stage(k).n} approved · lock ${M3.hash([st.inputHash, st.output.hash]).slice(0,8)}`);
       const n = P.nextKey(p, k); if (n && p.stages[n].status === 'idle') P.start(p, n);
     },
-    ageTick(id, plat, on){ const p = Store.getProject(id), st = p.stages.publish; if (!st.ageGate) return; st.ageGate.ticked[plat] = on ? now() : undefined; Store.saveProject(p); },
-    ageConfirm(id){ const p = Store.getProject(id), st = p.stages.publish, g = st.ageGate; if (!g || !g.plats.every(x => g.ticked[x])) return;
-      st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), age_gate:g.ticked};
-      P.log(p, '18+ age gate confirmed by you on ' + g.plats.map(x => x.toUpperCase() + ' ' + new Date(g.ticked[x]).toLocaleTimeString()).join(', ') + '. Publish each video yourself in the platform app'); },
+    /* Simulates the RPC confirm_age_gate(publish_id, platform, file_hash, text_version): single-use, per post and per platform, logged.
+       how: 'confirm' | 'keep_private' (YouTube/TikTok only: 18+ not available or not confirmed -> stays private forever) */
+    ageResolved(g, x){ return !!g.confirmed[x] && (x !== 'fb' || !!g.fbChecked); },
+    confirmAgeGate(id, plat, how){ const p = Store.getProject(id), st = p.stages.publish, g = st.ageGate; if (!g || !g.plats.includes(plat) || g.confirmed[plat]) return;
+      if (how === 'keep_private' && !['yt','tt'].includes(plat)) return;
+      const call = {rpc:'confirm_age_gate', publish_id:'pub_' + st.jobId + '_' + plat, platform:plat, decision:how === 'keep_private' ? 'keep_private' : 'age_gate_confirmed', file_hash:(p.stages.final.output || {}).hash || null, text_version:'alcohol-v2.6', at:now(), simulated:true};
+      g.confirmed[plat] = call; const r = (st.output.results || []).find(x => x.plat === plat); if (r) r.mode = how === 'keep_private' ? M3.ALCOHOL_KEPT[plat] : M3.ALCOHOL_AFTER[plat];
+      P.log(p, `confirm_age_gate (simulated): ${plat.toUpperCase()} ${how === 'keep_private' ? 'kept private, never made public' : 'post confirmed'} · ${call.publish_id}` + (plat === 'fb' ? ' · server published with targeting.age_min=18, is_ai_generated=true; check 18+ in Facebook' : plat === 'ig' ? ' · server published the Reel' : ''));
+      P.ageDone(p); },
+    fbAgeCheck(id){ const p = Store.getProject(id), st = p.stages.publish, g = st.ageGate; if (!g || !g.confirmed.fb || g.fbChecked) return;
+      g.fbChecked = now(); const r = (st.output.results || []).find(x => x.plat === 'fb'); if (r) r.mode = M3.ALCOHOL_FB_CHECKED;
+      P.log(p, 'Facebook: you checked that the 18+ age restriction is applied'); P.ageDone(p); },
+    ageDone(p){ const st = p.stages.publish, g = st.ageGate;
+      if (g.plats.every(x => P.ageResolved(g, x))) { st.status = 'done'; st.approval = {inputHash:st.inputHash, outputHash:st.output.hash, at:now(), age_gate:g.confirmed, fb_age_checked:g.fbChecked || null}; P.log(p, 'Every alcohol post resolved'); }
+      else Store.saveProject(p); },
     regenerate(id, k){ const p = Store.getProject(id); P.log(p, `${M3.stage(k).n}: regenerate requested`); P.start(p, k); },
     swap(id, i){ const p = Store.getProject(id); if (!p.stages.stills.output) return; P.start(p, 'stills', {swap:i}); },
     retry(id, k, force){ const p = Store.getProject(id); P.start(p, k, {force:!!force, queue: k === 'publish' && !p.stages.publish.choice}); },
-    queue(id, force){ const p = Store.getProject(id); P.start(p, 'publish', {queue:true, force:!!force}); },
+    queue(id, force, ttPrivacy){ const p = Store.getProject(id); if (ttPrivacy) { p.stages.publish.ttPrivacy = ttPrivacy; Store.saveProject(p); } P.start(Store.getProject(id), 'publish', {queue:true, force:!!force}); },
     download(id){ const p = Store.getProject(id), st = p.stages.publish;
       const manifest = {app:'3x3', note:'TEST BUILD: simulated. A real run delivers the final MP4; this file is the project manifest.', project:{id:p.id, name:p.name, topic:p.topic},
         rules:p.rules, stages:Object.fromEntries(Object.entries(p.stages).map(([k,s]) => [k, {status:s.status, output_hash:s.output && s.output.hash, approval:s.approval || null}]))};

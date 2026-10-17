@@ -23,8 +23,9 @@ M.CONNS = [
    perms:'Read your basic profile and post videos.', api:'TikTok Content Posting API'},
 ];
 M.SOCIAL_STATUS = {connected:'Connected as', relogin:'Needs sign-in again', missing:'Disconnected'};
-M.PUBLISH_NOTE = 'Nothing is posted until you approve it. Alcohol-history videos are always uploaded as private: you set the 18+ age limit in the platform\'s app and publish them yourself. Kids videos go to YouTube only, marked Made for Kids.';
-M.TIKTOK_NOTE = 'Until TikTok approves 3x3, TikTok posts are private drafts, or you can download the video and post it yourself. Videos under 1 minute are marked \'Reach only: not eligible for Creator Rewards\'.';
+M.PUBLISH_NOTE = 'Nothing is posted until you approve it. Alcohol-history videos are never auto-published: you confirm each post on each platform (YouTube is uploaded private, TikTok goes to your inbox drafts, Facebook and Instagram are held by 3x3 until you confirm, and you check the 18+ restriction in Facebook). On YouTube and TikTok, if 18+ isn\'t available or can\'t be confirmed, the video stays private and is never made public. Kids videos go to YouTube only, marked Made for Kids.';
+M.TIKTOK_NOTE = 'Until TikTok\'s audit of 3x3 passes, every TikTok post is uploaded to your TikTok inbox as a draft: open the notification in the TikTok app, finish it and post it yourself (or download the video and post it). After the audit, non-alcohol videos can post directly with the privacy you pick (there is no default). Videos under 1 minute are marked \'Reach only: not eligible for Creator Rewards\'.';
+M.TT_PRIVACY = [['PUBLIC_TO_EVERYONE','Everyone'],['MUTUAL_FOLLOW_FRIENDS','Friends (mutual followers)'],['FOLLOWER_OF_CREATOR','Followers'],['SELF_ONLY','Only me']];
 M.REACH_ONLY = 'Reach only: not eligible for Creator Rewards';
 M.conn = id => M.CONNS.find(c => c.id === id);
 
@@ -90,14 +91,14 @@ M.warnings = (I, conns) => {
 
 /* Routine key guard (TEST MODE): only fake values starting with test_ are accepted; nothing real is stored.
    Production: the routine key goes straight to Vault via the save-routine-key Edge Function. */
-M.TEST_RE = /^test[_-][A-Za-z0-9_-]{1,40}$/;
+M.TEST_RE = /^test_[A-Za-z0-9_]{1,40}$/;
 M.REAL_RE = /(sk[_-]|xi[_-]|xai[_-]|gh[opsu]_|AIza|EAA[A-Za-z0-9]|ya29\.|whsec_)[A-Za-z0-9_\-]{8,}|[A-Za-z0-9_\-]{32,}/;
 M.checkKey = v => { v = (v || '').trim();
   if (!v) return {ok:false, msg:'Paste the routine key from your Grok Bot routine.'};
   if (!M.TEST_RE.test(v) && M.REAL_RE.test(v)) return {ok:false, real:true, msg:'Test mode: that looks like a real key, so it was rejected and not stored. Use a fake value that starts with test_.'};
   if (!M.TEST_RE.test(v)) return {ok:false, msg:'Test mode: the routine key field only accepts fake values that start with test_ (for example test_routine_1).'};
   return {ok:true, last4: v.slice(-4)}; };
-M.checkUrl = v => { try { const u = new URL((v||'').trim()); if (u.protocol !== 'https:') return {ok:false, msg:'The webhook URL must start with https://'}; if (/[?&](key|token|secret|sig)=/i.test(u.search)) return {ok:false, msg:'Remove credentials from the URL. The routine key goes in its own field.'}; return {ok:true, origin:u.origin}; } catch(e){ return {ok:false, msg:'Enter the full https:// webhook URL of your 3x3 routine.'}; } };
+M.checkUrl = v => { try { const u = new URL((v||'').trim()); if (u.protocol !== 'https:') return {ok:false, msg:'The webhook URL must start with https://'}; if (u.username || u.password || /@/.test((v||'').split('/')[2] || '')) return {ok:false, msg:'Remove the user name or password from the URL (user:pass@). The routine key goes in its own field.'}; if ((v||'').length > 300) return {ok:false, msg:'That URL is too long.'}; if (/[?&](key|token|secret|sig)=/i.test(u.search)) return {ok:false, msg:'Remove credentials from the URL. The routine key goes in its own field.'}; return {ok:true, origin:u.origin}; } catch(e){ return {ok:false, msg:'Enter the full https:// webhook URL of your 3x3 routine.'}; } };
 M.fakeSecret = () => 'test_sig_' + Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2,'0')).join('');
 /* ---------- hashing (approval locks) ---------- */
 M.hash = (obj) => {
@@ -117,19 +118,46 @@ M.AI_DISCLOSURE = {
 M.CLAIM_NICHES = ['health_nutrition','human_body','finance'];
 M.CLAIM_SUBS = ['clinic_education','investing_basics','credit_debt','side_hustles','fitness_gym','real_estate'];
 /* ---------- custom-topic screening (word boundaries, so 'beginner', 'engine', 'drum', 'livestock' don't match) ---------- */
-M.TOPIC_KEYWORDS = {
-  crypto:    /\b(crypto\w*|bitcoin|btc|ethereum|eth|altcoins?|memecoins?|airdrops?|presales?|nfts?|defi|web3|blockchain|tokens? sale|ico|100x|1000x|to the moon)\b/i,
-  finance:   /\b(invest(ing|ment|ments|or|ors)?|stocks?|forex|day ?trad\w*|trading|passive income|loans?|credit cards?|debt|mortgages?|retire(ment)?|dividends?|get rich)\b/i,
-  health:    /\b(supplements?|weight ?loss|diets?|cures?|cured|vitamins?|diseases?|detox|immunity|immune|cancer|diabetes|keto|medicines?|symptoms?)\b/i,
-  alcohol:   /\b(liquor|alcohol(ic)?|wines?|beers?|cocktails?|whiske?y|bourbon|scotch|rum|gin|vodka|tequila|mezcal|brandy|cognac|sake|soju|lambanog|brew(ery|eries|ing)?|distiller(y|ies))\b/i,
-  true_crime:/\b(murders?|murdered|serial killers?|true crime|homicides?|kidnapp\w*|assassinat\w*)\b/i,
-  kids:      /\b(for kids|for children|toddlers?|preschool\w*|nursery rhymes?|kindergarten)\b/i,
+/* Terms per bundle. Single words get plural forms (s, es, y→ies) automatically; matching is whole-word on normalised text. */
+M.TOPIC_TERMS = {
+  crypto: ['crypto','cryptocurrency','cryptocurrencies','bitcoin','btc','ethereum','eth','ether','altcoin','memecoin','shitcoin','stablecoin','airdrop','presale','nft','defi','web3',
+    'blockchain','token sale','ico','doge','dogecoin','shib','shiba inu','solana','sol','xrp','cardano','litecoin','binance','coinbase','tether','usdt','satoshi','hodl','rug pull','pump and dump','to the moon','moonshot','crypto mining'],
+  finance: ['invest','investing','investment','investor','stock','forex','day trading','trading','passive income','loan','credit card','debt','mortgage','retirement','dividend','get rich','options trading'],
+  health: ['supplement','weight loss','diet','cure','cured','vitamin','disease','detox','immunity','immune','cancer','diabetes','keto','medicine','symptom','fat burner'],
+  alcohol: ['liquor','liqueur','alcohol','alcoholic','wine','winery','beer','brewery','brewing','cocktail','whisky','whiskey','bourbon','scotch','rum','gin','vodka','tequila','mezcal','brandy',
+    'cognac','soju','lambanog','moonshine','absinthe','mead','cider','lager','ale','champagne','prosecco','sherry','baijiu','shochu','grappa','ouzo','raki','pisco','cachaca','schnapps',
+    'hooch','booze','distillery','distilled spirits','bartender','mixology','hangover','drunk','pub crawl','happy hour'],
+  true_crime: ['murder','murdered','serial killer','true crime','homicide','kidnapping','kidnapped','assassination','massacre','cold case'],
+  kids: ['for kids','for children','toddler','preschool','preschooler','nursery rhyme','kindergarten'],
 };
+/* distinctive terms also matched on the fully collapsed text (no spaces or separators), to catch "c r y p t o", "cryp-to", "w.h.i.s.k.y" */
+M.TOPIC_COLLAPSED = {crypto:['crypto','bitcoin','ethereum','dogecoin','solana','airdrop','presale','memecoin','altcoin','stablecoin','blockchain'],
+  alcohol:['whisky','whiskey','whiskies','liquor','alcohol','vodka','tequila','bourbon','moonshine','cocktail','brandy','cognac','absinthe','champagne','schnapps','liqueur'],
+  true_crime:['serialkiller','truecrime','murder'], health:[], finance:[], kids:[]};
+M.TOPIC_PATTERNS = {crypto:[/(^|[^a-z0-9])\d{2,}x(?![a-z0-9]{2})/]};
+const CONF = {'а':'a','е':'e','о':'o','р':'p','с':'c','у':'y','х':'x','к':'k','м':'m','т':'t','в':'b','н':'h','і':'i','ї':'i','ј':'j','ѕ':'s','ԁ':'d','ɡ':'g','ӏ':'l','ո':'n','ս':'u',
+  'α':'a','ο':'o','ρ':'p','ν':'v','τ':'t','ι':'i','κ':'k','ε':'e','υ':'u','χ':'x','β':'b','η':'n','ⅰ':'i','ı':'i','ℓ':'l'};
+const LEET = {'0':'o','1':'i','3':'e','4':'a','5':'s','7':'t','@':'a','$':'s','!':'i','|':'l'};
+M.fold = t => String(t || '').normalize('NFKC').toLowerCase().replace(/./gu, ch => CONF[ch] || ch).normalize('NFD').replace(/\p{M}+/gu, '')
+  .replace(/(?<=[\p{L}\p{N}])[-._·•'’*]+(?=[\p{L}\p{N}])/gu, '')            // cryp-to, w.h.i.s.k.y
+  .replace(/(?:(?<![\p{L}\p{N}])[\p{L}\p{N}$@](?:\s+|[-._·•]+)){2,}[\p{L}\p{N}$@](?![\p{L}\p{N}])/gu, m => m.replace(/[\s\-._·•]+/gu, ''));  // c r y p t o, 1 0 0 x
+M.leet = t => t.replace(/[\p{L}\p{N}$@!|]+/gu, w => /\p{L}/u.test(w) && !/^\d+x$/.test(w) ? w.replace(/[013457@$!|]/g, c => LEET[c]) : w);
+M.topicVariants = t => { const a = M.fold(t), b = M.leet(a), b2 = b.replace(/i/g, 'l'); return {words:[a, b, b2], collapsed:[a, b, b2].map(x => x.replace(/[^\p{L}\p{N}]+/gu, '').replace(/cryptograph\w*/g, ''))}; };
+const esc_ = w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const plural = w => { const e = esc_(w).replace(/\s+/g, '\\s+'); if (/\s/.test(w)) return e + '(?:s|es)?'; if (/y$/.test(w)) return e.slice(0, -1) + '(?:y|ys|ies)'; return e + '(?:s|es)?'; };
+M.termRe = terms => new RegExp('(?:^|[^\\p{L}\\p{N}])(?:' + terms.map(plural).join('|') + ')(?![\\p{L}\\p{N}])', 'iu');
+M.TOPIC_RE = Object.fromEntries(Object.entries(M.TOPIC_TERMS).map(([k, v]) => [k, M.termRe(v)]));
 M.IMPLIES = {crypto:['finance','crypto']};
 M.topicText = I => (I && I.topic === -1 ? (I.ownTopic || '') : '');
-M.topicBundles = text => { const out = []; Object.entries(M.TOPIC_KEYWORDS).forEach(([b, re]) => { if (re.test(text || '')) (M.IMPLIES[b] || [b]).forEach(x => out.includes(x) || out.push(x)); }); return out; };
-M.wordRe = w => new RegExp('(^|[^\\p{L}\\p{N}])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') + '($|[^\\p{L}\\p{N}])', 'iu');
-M.bannedHits = (text, words) => (words || []).filter(w => w && M.wordRe(w).test(text || ''));
+M.topicBundles = text => { const out = [], V = M.topicVariants(text);
+  Object.keys(M.TOPIC_TERMS).forEach(b => { const hit = V.words.some(w => M.TOPIC_RE[b].test(w) || (M.TOPIC_PATTERNS[b] || []).some(r => r.test(w)))
+      || V.collapsed.some(c => (M.TOPIC_COLLAPSED[b] || []).some(t => c.includes(t)));
+    if (hit) (M.IMPLIES[b] || [b]).forEach(x => out.includes(x) || out.push(x)); });
+  return out; };
+M.wordRe = w => M.termRe([w]);
+M.bannedHits = (text, words) => { const V = M.topicVariants(text);
+  return (words || []).filter(w => { if (!w) return false; const re = M.termRe([w.toLowerCase()]); const cw = M.fold(w).replace(/[^\p{L}\p{N}]+/gu, '');
+    return V.words.some(x => re.test(x)) || ((cw.length >= 6 || (/\d/.test(cw) && cw.length >= 3)) && V.collapsed.some(c => c.includes(cw))); }); };
 M.needsNoClaims = I => M.CLAIM_NICHES.includes(I.niche) || M.CLAIM_SUBS.includes(I.sub) || M.topicBundles(M.topicText(I)).some(b => ['crypto','finance','health'].includes(b));
 M.BANNED_PRESET = {
   health_nutrition:['cure','treat','prevent','heal','detox','miracle','guaranteed'],
@@ -139,13 +167,18 @@ M.BANNED_PRESET = {
 };
 M.ALCOHOL_SUBS = ['liquor_history'];
 M.isAlcohol = I => M.ALCOHOL_SUBS.includes(I.sub) || M.topicBundles(M.topicText(I)).includes('alcohol');
-M.ALCOHOL_YT = 'Alcohol-history videos are always uploaded as private drafts on every platform (YouTube private, Facebook unpublished, TikTok private draft, Instagram held). A "Needs you" step then asks you to set the 18+ age limit in each platform\'s own app and tick "I set 18+". No affiliate or retailer links, and the alcohol disclaimer is always on.';
-M.ALCOHOL_MODES = {yt:'private draft (privacyStatus=private)', fb:'unpublished draft', tt:'private draft (SELF_ONLY)', ig:'held as a draft: not posted'};
-M.ALCOHOL_STEPS = {
-  yt:'YouTube Studio → Content → the video → Details → Show more → Age restriction → "Yes, restrict my video to viewers over 18" → Save. Leave "made for kids" = No.',
-  tt:'TikTok app → open the draft → More options → Audience controls → 18+ only → Post.',
-  fb:'Meta Business Suite → the post → age restriction 18+ (Page-level alcohol age restriction if needed).',
-  ig:'Instagram Settings → Account → Minimum age (alcohol) = 18+ for your market, then post the held Reel yourself.'};
+M.ALCOHOL_YT = 'Alcohol-history videos are never auto-published, and you confirm every post on every platform. YouTube: uploaded private; you set the 18+ age restriction and publish in YouTube Studio. TikTok: uploaded to your TikTok inbox as a draft; you set Audience controls 18+, choose who can view and post in the app (3x3 never direct-posts alcohol). On YouTube and TikTok, if 18+ isn\'t available or you can\'t confirm it was applied, the video stays private and is never made public. Facebook: held by 3x3 until you confirm; the 3x3 server then publishes it with an 18+ age minimum and the AI-generated flag, and you still check in Facebook that the age restriction is applied (until a real-Page test proves it\'s enforced). Instagram: held until you confirm, then the 3x3 server publishes it. No affiliate or retailer links, and the alcohol disclaimer is always on.';
+M.ALCOHOL_MODES = {yt:'uploaded private (privacyStatus=private)', tt:'uploaded to your TikTok inbox (draft)', fb:'held by 3x3 until you confirm this post', ig:'held by 3x3 until you confirm this post'};
+M.ALCOHOL_AFTER = {yt:'confirmed 18+: you publish it in YouTube Studio', tt:'confirmed 18+: you finish and post it from your TikTok inbox', fb:'published by the 3x3 server (simulated) · targeting.age_min=18 · is_ai_generated=true', ig:'published by the 3x3 server (simulated)'};
+M.ALCOHOL_KEPT = {yt:'kept private: never made public (18+ not available or not confirmed)', tt:'kept private in your inbox: never posted publicly (18+ not available or not confirmed)'};
+M.ALCOHOL_FB_CHECKED = 'published by the 3x3 server (simulated) · targeting.age_min=18 · is_ai_generated=true · 18+ checked by you in Facebook';
+M.PRIVATE_RULE = 'If 18+ isn\'t available or you can\'t confirm it was applied, choose "Keep private": the video stays private and is never made public.';
+(() => { const ms = ((((window.RS_DATA || {}).bundles || {}).alcohol || {}).publishing || {}).manual_steps || {};
+  M.ALCOHOL_STEPS = {
+    yt: (ms.youtube_shorts || 'YouTube Studio → Content → the video → Details → Show more → Age restriction → "Yes, restrict my video to viewers over 18" → Save. Leave "made for kids" = No.') + ' ' + M.PRIVATE_RULE,
+    tt: (ms.tiktok || 'Open the TikTok inbox notification → finish editing → More options → Audience controls → 18+ only (if offered) → choose who can view → Post.') + ' ' + M.PRIVATE_RULE,
+    fb: 'Confirm this post first: only then does the 3x3 server upload it, with an 18+ age minimum (targeting.age_min) and the AI-generated flag. Then open the post in Facebook (Meta Business Suite → the post) and check the 18+ age restriction is applied. This manual check stays until a real-Page test proves the API setting is enforced.',
+    ig: ms.instagram_reels || 'Settings → Account → Minimum age (alcohol) set to the legal drinking age, then confirm this post.'}; })();
 /* ---------- spend cap (estimates; the real ledger lives server-side / in the user's bot) ---------- */
 M.CAP_MAX = 20;
 M.stageCost = (k, I) => { const n = Math.round((I.dur || 45) / 2.5), ch = Math.round((I.dur || 45) * 155 / 60 * 5.8);

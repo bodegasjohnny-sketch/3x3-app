@@ -98,9 +98,11 @@
       case 'retry': Pipeline.retry(id, k); return;
       case 'force': Pipeline.retry(id, k, true); return;
       case 'swap': Pipeline.swap(id, +a.dataset.i); return;
-      case 'queue': Pipeline.queue(id); return;
-      case 'age18': Pipeline.ageTick(id, a.dataset.p, a.checked); return;
-      case 'ageconfirm': Pipeline.ageConfirm(id); return;
+      case 'queue': { const sel = document.getElementById('ttpriv-' + id); if (sel && !sel.value) { App.toast('Choose who can view the TikTok video first', 'err'); sel.focus(); return; } Pipeline.queue(id, false, sel ? sel.value : null); return; }
+      case 'ageconfirm': Pipeline.confirmAgeGate(id, a.dataset.p, 'confirm'); return;
+      case 'agekeep': Pipeline.confirmAgeGate(id, a.dataset.p, 'keep_private'); return;
+      case 'fbcheck': Pipeline.fbAgeCheck(id); return;
+      case 'ttaudit': Store.setFlag('tiktok_direct_post_audited', !Store.getFlags().tiktok_direct_post_audited); route(); return;
       case 'resetspend': Store.resetSpend(); App.toast('Simulated: new day, spend reset to $0'); Pipeline.retry(id, k); return;
       case 'download': Pipeline.download(id); return;
       case 'reset': Pipeline.reset(id); return;

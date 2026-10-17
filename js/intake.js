@@ -199,7 +199,6 @@ function sanitizeIntake(I, opts={}){ const o={}, D=S_DEFAULT, inList=(v,l)=>l.in
   const nn=N(o.niche||D.niche); o.sub=inList(I.sub,nn.subs.map(x=>x[0]))||(o.niche?nn.subs[0][0]:undefined);
   o.format=inList(I.format,FORMATS.map(f=>f.id)); o.aspect=inList(I.aspect,ASPECTS.map(a=>a.id));
   if(Number.isFinite(+I.dur)) o.dur=Math.max(10,Math.min(180,Math.round(+I.dur)));
-  if(I.style&&REAL&&RD.renamed&&RD.renamed[I.style]) I.style=RD.renamed[I.style];
   o.style=inList(I.style,STYLES.map(x=>x.id)); o.voice=inList(I.voice,VOICES.map(v=>v.id));
   o.lang=str(I.lang,40)||undefined; o.energy=inList(I.energy,['Calm','Warm','Hype']); if(Number.isFinite(+I.pace)) o.pace=Math.max(0.7,Math.min(1.3,+I.pace));
   if(Array.isArray(I.pron)) o.pron=I.pron.filter(x=>Array.isArray(x)&&typeof x[0]==='string'&&typeof x[1]==='string').slice(0,40).map(([w,q])=>[str(w,40),str(q,60)]);
@@ -209,7 +208,7 @@ function sanitizeIntake(I, opts={}){ const o={}, D=S_DEFAULT, inList=(v,l)=>l.in
   o.music=inList(I.music,MUSIC); o.sfx=inList(I.sfx,['Low','Med','High']);
   if(Array.isArray(I.banned)) o.banned=I.banned.map(w=>str(w,40)).filter(Boolean).map(w=>w.toLowerCase()).slice(0,60);
   if(I.plat&&typeof I.plat==='object'){ o.plat={}; PLATS.forEach(x=>o.plat[x.id]=I.plat[x.id]===true); }
-  ['counter','vo','aiTag','kids','noClaims','disclaimer'].forEach(k=>{ if(typeof I[k]==='boolean') o[k]=I[k]; });
+  ['counter','vo','aiTag','noClaims','disclaimer'].forEach(k=>{ if(typeof I[k]==='boolean') o[k]=I[k]; }); o.kids=I.kids===true; o.kidsBundle=I.kidsBundle===true;
   o.ownTopic=str(I.ownTopic,160)||''; o.topic=I.topic===-1?-1:(Number.isInteger(I.topic)&&I.topic>=0&&I.topic<5?I.topic:0);
   o.cap=Math.max(1,Math.min(M3.CAP_MAX,Math.round(+I.cap||M3.CAP_MAX)));
   Object.keys(o).forEach(k=>o[k]===undefined&&delete o[k]);
@@ -231,7 +230,9 @@ const topicHits=()=>S.topic===-1?M3.bannedHits(S.ownTopic,[...new Set(S.banned.c
 const bundleList=()=>bundleIds().map(id=>Object.assign({id},BUNDLES[id]||{})).filter(b=>b.forced!==false);
 const hasBundle=id=>bundleIds().includes(id);
 const forcedDisc=()=>{ const b=bundleList().filter(x=>x.disclaimer&&x.disclaimer.required); return b.find(x=>x.id==='crypto')||b.find(x=>x.id==='finance')||b[0]||null; };
-const kidsForced=()=>hasBundle('kids');
+const kidsBlocked=()=>hasBundle('alcohol')||hasBundle('true_crime');
+const kidsForced=()=>hasBundle('kids')&&!kidsBlocked();
+const kidsOn=()=>!kidsBlocked()&&(S.kids||kidsForced());
 const forcedWords=()=>[...new Set(bundleList().flatMap(b=>b.banned_words||[]))];
 const blockedGoal=()=>{ const b=bundleList().find(x=>(x.goals_blocked||[]).includes(S.goal)); return b?b:null; };
 const highRisk=()=>!!forcedDisc()||kidsForced()||M3.needsNoClaims(S)||((curSub()||{}).risk==='high');
@@ -272,7 +273,7 @@ function summary(){
     ['mic','Voice',S.vo?`${V().n} – ${V().r}`:'No voiceover',S.vo?`${S.lang} · ${S.pace.toFixed(2)}× · ${S.energy}`:'Captions + music only',5],
     ['palette','Brand',`${S.name}`,`${S.handle} · ${S.fh} / ${S.fb}`,6],
     ['cc','Captions & audio',`${capN()} · ${posN()}`,`${S.music} · SFX ${S.sfx} · −14 LUFS`,7],
-    ['shield','Safety & AI labels',`${S.aiAck?'AI disclosure ✓':'AI disclosure pending'}${claimsOn()?' · no-claims':''}${S.kids?' · made for kids':''}`,platList().join(', '),8]];
+    ['shield','Safety & AI labels',`${S.aiAck?'AI disclosure ✓':'AI disclosure pending'}${claimsOn()?' · no-claims':''}${kidsOn()?' · made for kids':''}`,platList().join(', '),8]];
   const c=2*Math.PI*20, done=pct();
   return `<div class="sumhd"><div class="ring"><svg viewBox="0 0 48 48"><defs><linearGradient id="rg"><stop offset="0" stop-color="#00C2FF"/><stop offset="1" stop-color="#16C784"/></linearGradient></defs><circle class="bg" cx="24" cy="24" r="20"/><circle class="fg" cx="24" cy="24" r="20" stroke-dasharray="${c}" stroke-dashoffset="${c*(1-done/100)}"/></svg><b>${done}%</b></div>
     <div><h4>Project summary</h4><p>${S.locked?'Intake locked · rules v1':'Fills in as you choose'}</p></div></div>
@@ -362,12 +363,12 @@ const VIEWS = {
        <div class="lbl">Energy</div><div class="chips">${['Calm','Warm','Hype'].map(e=>`<button class="chip ${S.energy===e?'sel':''}" data-set="energy" data-val="${e}">${e}</button>`).join('')}</div></div>
      <div class="panel st"><div class="lbl" style="margin-top:0">Pronunciation list <span class="r" style="color:var(--dim)">${S.pron.length} words</span></div>
        <div class="pron">${S.pron.map(([w,p],i)=>`<div class="prow"><span>${esc(w)}</span>${ic('ar')}<span class="ph">${esc(p)}</span><button data-act="delpron" data-val="${i}" style="color:var(--dim)" aria-label="Remove ${esc(w)}">${ic('x')}</button></div>`).join('')}
-       <div class="row" style="gap:6px;margin-top:4px"><input class="inp" id="pw" placeholder="word" style="padding:8px 10px"><input class="inp" id="pp" placeholder="say it like…" style="padding:8px 10px"><button class="btn" data-act="addpron" style="padding:8px 10px" aria-label="Add pronunciation">${ic('plus')}</button></div></div></div>
+       <div class="row" style="gap:6px;margin-top:4px"><input class="inp" id="pw" maxlength="40" placeholder="word" style="padding:8px 10px"><input class="inp" id="pp" maxlength="60" placeholder="say it like…" style="padding:8px 10px"><button class="btn" data-act="addpron" style="padding:8px 10px" aria-label="Add pronunciation">${ic('plus')}</button></div></div></div>
    </div></div>`; },
 6(){ return sh('Brand kit','Everything here is burned into every video. Preview updates live.')+
   `<div class="brandgrid"><div>
-    <div class="f2 st"><label class="field"><span>Brand name</span><input class="inp" data-in="name" value="${esc(S.name)}"></label>
-      <label class="field"><span>Handle</span><input class="inp" data-in="handle" value="${esc(S.handle)}"></label></div>
+    <div class="f2 st"><label class="field"><span>Brand name</span><input class="inp" data-in="name" maxlength="60" value="${esc(S.name)}"></label>
+      <label class="field"><span>Handle</span><input class="inp" data-in="handle" maxlength="40" value="${esc(S.handle)}"></label></div>
     <div class="f2 st" style="margin-top:12px">
       <div class="drop has"><div class="dz" style="background:${hx(S.pal.hl)};color:${onHl()}">${ic('leaf')}</div><div style="min-width:0"><b>healthybites-logo.png</b><small>512×512 · transparent · <a style="color:var(--cyan)">Replace</a></small></div></div>
       <div class="drop"><div class="dz">${ic('up')}</div><div><b>Frame overlay</b><small>Drop PNG 1080×1920 (optional)</small></div></div></div>
@@ -377,8 +378,8 @@ const VIEWS = {
     <div class="lbl st">Typography & text</div>
     <div class="f2 st"><label class="field"><span>Heading font</span><select class="inp" data-in="fh">${FONTS.map(f=>`<option ${f===S.fh?'selected':''}>${f}</option>`).join('')}</select></label>
       <label class="field"><span>Body font</span><select class="inp" data-in="fb">${FONTS.map(f=>`<option ${f===S.fb?'selected':''}>${f}</option>`).join('')}</select></label></div>
-    <div class="f2 st" style="margin-top:12px"><label class="field"><span>CTA text (the only CTA, last 15%)</span><input class="inp" data-in="cta" value="${esc(S.cta)}"></label>
-      <label class="field"><span>End card line (not a second CTA)</span><input class="inp" data-in="end" value="${esc(S.end)}"></label></div>
+    <div class="f2 st" style="margin-top:12px"><label class="field"><span>CTA text (the only CTA, last 15%)</span><input class="inp" maxlength="140" data-in="cta" value="${esc(S.cta)}"></label>
+      <label class="field"><span>End card line (not a second CTA)</span><input class="inp" data-in="end" maxlength="140" value="${esc(S.end)}"></label></div>
   </div>
   <div class="prevcol st"><div class="prevhd"><b>Live preview · 9:16</b><span class="live"><i></i>LIVE</span></div>
     <div class="phones" id="pv">${phoneScene()}${phoneEnd()}</div></div></div>`; },
@@ -400,7 +401,7 @@ const VIEWS = {
 8(){ return sh('Safety & platforms','Guardrails every script must pass, and where you plan to publish.')+bundleBanner()+
   `<div class="panel st"><div class="lbl" style="margin-top:0">${ic('shield')}Banned words ${M3.BANNED_PRESET[S.niche]?`<span class="badge grn" style="text-transform:none;letter-spacing:0">Prefilled for ${esc(N(S.niche).n)}</span>`:''}<span class="r" style="color:var(--dim)">Scripts using these are rewritten</span></div>
     <div class="chips">${S.banned.map((w,i)=>forcedWords().includes(w)?`<span class="chip word forced" title="Forced by the ${esc(bundleList().map(b=>b.name).join(' / '))} rule bundle">${ic('lock')}${esc(w)}</span>`:`<span class="chip word">${esc(w)}<button class="x" data-act="delword" data-val="${i}" aria-label="Remove ${esc(w)}">${ic('x')}</button></span>`).join('')}
-      <span class="addin"><input id="bw" placeholder="Add a word…"><button class="btn" data-act="addword" style="padding:4px 8px;border-radius:99px" aria-label="Add banned word">${ic('plus')}</button></span></div>
+      <span class="addin"><input id="bw" maxlength="40" placeholder="Add a word…"><button class="btn" data-act="addword" style="padding:4px 8px;border-radius:99px" aria-label="Add banned word">${ic('plus')}</button></span></div>
     <div class="row" style="margin-top:10px;gap:6px;font-size:12px;color:var(--dim)">Suggested: ${suggestWords().filter(w=>!S.banned.includes(w)).map(w=>`<button class="chip ghost" style="padding:3px 10px;font-size:12px" data-act="sugword" data-val="${w}">+ ${w}</button>`).join('')}</div></div>
   <div class="grid g2" style="margin-top:12px">
     <div class="trow st" style="flex-wrap:wrap"><div class="tx"><h4>${forcedDisc()&&forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer (not financial advice)':'Disclaimer'}</h4><p>Shown on the first frame and in the description</p></div><div class="tog ${discOn()?'on':''} ${highRisk()?'locked':''}" ${highRisk()?'aria-disabled="true" title="Always on for high-risk niches"':'data-act="tog" data-val="disclaimer"'}></div>
@@ -416,7 +417,7 @@ const VIEWS = {
     ['Format',`${F().n} · ${S.dur}s`,`${S.aspect} · ≈${words(S.dur)} words · ${shots(S.dur)} shots${S.plat.tt&&S.dur<=60?' · TikTok: reach only':''}`,3],['Budget',`$${S.cap}/day cap`,'Per user · enforced by your Grok Bot',9],['Style',ST().n,ST().mo,4],
     ['Voice',S.vo?`${V().n} – ${V().r}`:'No voiceover',S.vo?`${S.lang} · ${S.pace.toFixed(2)}× · ${S.energy}`:'Captions + music only',5],['Brand',S.name,`${S.handle} · ${S.fh} / ${S.fb}`,6],
     ['Captions',`${capN()} · ${posN()}`,`Counter ${S.counter?'on':'off'}${affOn()?' · affiliate line on':''}`,7],['Audio',`${S.music} · SFX ${S.sfx}`,'−14 LUFS',7],
-    ['Safety',`${S.banned.length} banned · sources on${claimsOn()?' · no-claims':''}`,`${S.kids?'Made for kids · ':''}${platList().join(', ')}`,8],
+    ['Safety',`${S.banned.length} banned · sources on${claimsOn()?' · no-claims':''}`,`${kidsOn()?'Made for kids · ':''}${platList().join(', ')}`,8],
     ['AI disclosure',S.aiAck?'Confirmed · required':'Not confirmed',aiPlatSummary(),8]];
   if(S.locked) return sh('Intake locked','Global rules are built for this topic. Create the project to start.')+
     `<div class="okbanner st"><div class="lk">${ic('lock')}</div><div style="flex:1"><h3>Rules v${S.version} built from your intake · v${S.version} is read-only</h3><p>${items.slice(0,6).map(i=>esc(i[1])).join(' · ')}</p><p class="mono" style="margin-top:4px">intake hash ${M3.hash(intakeSnapshot())}</p></div><button class="btn ghost" data-act="newversion">${ic('edit')}Edit as v${S.version+1}</button></div>
@@ -440,7 +441,7 @@ const VIEWS = {
 
 function phoneScene(){ return `<div><div class="phone"><div class="notch"></div><div class="scene"></div>
   <div class="pprog">${[1,2,3,4,5,6].map(i=>`<i class="${i<=3?'f':''}"></i>`).join('')}</div>
-  <div class="safez t"><span>250px safe</span></div><div class="safez b"><span>400px safe</span></div><div class="pdisc">${esc(shortDisc())}</div><div class="pctr">3/6</div>${S.aiTag||isRealistic()?'<div class="paitag">AI-generated</div>':''}
+  <div class="safez t"><span>250px safe</span></div><div class="safez b"><span>400px safe</span></div><div class="pdisc" style="color:${cr('#FFFFFF',hx(S.pal.warn))>=cr('#0B0F1A',hx(S.pal.warn))?'#FFFFFF':'#0B0F1A'}">${esc(shortDisc())}</div><div class="pctr">3/6</div>${S.aiTag||isRealistic()?'<div class="paitag">AI-generated</div>':''}
   <div class="pcap">Avocados pack more <em>potassium</em> than bananas${affOn()?`<span class="paff">${esc(M3.AFFILIATE_LINE)}</span>`:''}</div>
   <div class="plt"><div class="plogo">${ic('leaf')}</div><div style="min-width:0"><b data-bind="name">${esc(S.name)}</b><small data-bind="handle">${esc(S.handle)}</small></div></div></div><div class="phcap">Scene · beat 3</div></div>`; }
 function phoneEnd(){ return `<div><div class="phone sm"><div class="notch"></div><div class="pend"><div class="plogo">${ic('leaf')}</div><b data-bind="name">${esc(S.name)}</b>
@@ -480,7 +481,8 @@ function step8Extra(){ const plats=Object.keys(S.plat).filter(k=>S.plat[k]); con
   <div class="grid g2" style="margin-top:12px">
     <div class="trow st" style="align-items:flex-start;flex-wrap:wrap"><div class="tx"><h4>No-claims rules ${auto?`<span class="badge mute">${ic('lock')}Auto-on for this niche</span>`:''}</h4><p>${auto?'Health, finance and crypto topics always run strict claim checks.':'Optional for this niche.'}</p></div><div class="tog ${claimsOn()?'on':''} ${auto?'locked':''}" ${auto?'':'data-act="tog" data-val="noClaims"'}></div>
       ${claimsOn()?`<ul class="claimlist">${claimRules().map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:''}</div>
-    <div class="trow st" style="align-items:flex-start;flex-wrap:wrap"><div class="tx"><h4>${ic('kid')} Made for kids</h4><p>YouTube COPPA setting. When on, comments and personalised ads are off, and the script avoids anything not suitable for under-13s.${S.niche==='kids_learning'&&!S.kids?' <b style="color:#ffcf7a">Recommended for Kids & learning.</b>':''}</p></div><div class="tog ${S.kids||kidsForced()?'on':''} ${kidsForced()?'locked':''}" ${kidsForced()?'aria-disabled="true"':'data-act="tog" data-val="kids"'}></div>
+    <div class="trow st" style="align-items:flex-start;flex-wrap:wrap"><div class="tx"><h4>${ic('kid')} Made for kids</h4><p>YouTube COPPA setting. When on, comments and personalised ads are off, and the script avoids anything not suitable for under-13s.${S.niche==='kids_learning'&&!S.kids?' <b style="color:#ffcf7a">Recommended for Kids & learning.</b>':''}</p></div><div class="tog ${kidsOn()?'on':''} ${kidsForced()||kidsBlocked()?'locked':''}" ${kidsForced()||kidsBlocked()?'aria-disabled="true"':'data-act="tog" data-val="kids"'}></div>
+      ${kidsBlocked()?`<p style="flex-basis:100%;font-size:11.5px;color:var(--mute);margin-top:6px">${ic('lock')} Off and locked: ${hasBundle('alcohol')?'alcohol':'true-crime'} content is never made for kids.</p>`:''}
       ${kidsForced()?`<p style="flex-basis:100%;font-size:11.5px;color:var(--mute);margin-top:6px">${ic('lock')} Forced by the Made for kids (COPPA) bundle. ${esc((BUNDLES.kids||{}).platform_note||'Kids projects publish to YouTube only.')}</p>`:''}</div>
   </div>`; }
 const hx=v=>HEX.test(v||'')?v:'#000000';
@@ -527,7 +529,7 @@ function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S
     brand:{name:S.name,handle:S.handle,palette:S.pal,fonts:[S.fh,S.fb],end_card:S.end},
     captions:{style:S.capStyle,position:S.capPos,counter:S.counter,on_every_frame:true,safe_zone_px:{top:250,bottom:400},affiliate_line:affOn()?M3.AFFILIATE_LINE:null},
     audio:{music:S.music,sfx:S.sfx.toLowerCase(),lufs:-14,true_peak_db:-1},
-    rule_bundles_applied:bundleIds(), bundle_rules:Object.fromEntries(bundleList().map(b=>[b.id,Object.fromEntries(['visual_rules','subject_rules','pii','sources','age_gate','cta','affiliate'].filter(f=>b[f]).map(f=>[f,b[f]]).concat(b.publishing?[['auto_publish',b.publishing.auto_publish!==false]]:[]))])), generation_routing:{route:'xai_api',browser_routing_allowed:false}, safety:{banned_words:S.banned,no_claims:claimsOn()?claimRules():false,disclaimer:discOn()?{text:disclaimerText(),locked:highRisk()}:false,cite_sources:true,made_for_kids:S.kids||kidsForced(), made_for_kids_forced:kidsForced()},
+    rule_bundles_applied:bundleIds(), bundle_rules:Object.fromEntries(bundleList().map(b=>[b.id,Object.fromEntries(['visual_rules','subject_rules','pii','sources','age_gate','cta','affiliate'].filter(f=>b[f]).map(f=>[f,b[f]]).concat(b.publishing?[['auto_publish',b.publishing.auto_publish!==false]]:[]))])), generation_routing:{route:'xai_api',browser_routing_allowed:false}, safety:{banned_words:S.banned,no_claims:claimsOn()?claimRules():false,disclaimer:discOn()?{text:disclaimerText(),locked:highRisk()}:false,cite_sources:true,made_for_kids:kidsOn(), made_for_kids_forced:kidsForced(), made_for_kids_blocked:kidsBlocked()},
     ai_disclosure:{required:true,acknowledged:S.aiAck,on_screen_tag:S.aiTag||isRealistic(),photoreal:isRealistic(),platforms:Object.fromEntries(plats.map(k=>[k,M3.AI_DISCLOSURE[k].label]))},
     affiliate_disclosure:affOn()?{required:true,on_screen:true,in_description:true,text:M3.AFFILIATE_LINE}:null,
     budget:{daily_cap_usd:Math.min(M3.CAP_MAX,+S.cap||M3.CAP_MAX),est_cost_per_video_usd:M3.videoCost(S),enforced_by:'server-side ledger + user Grok Bot in production (simulated here)'}, tiktok:S.plat.tt?{duration_s:S.dur,creator_rewards_eligible:S.dur>60}:null,
@@ -564,8 +566,11 @@ function go(n){ n=Math.max(1,Math.min(9,n)); if(n===S.step) return;
   S.step=n; S.max=Math.max(S.max,n); stepChanged=true; history.replaceState(null,'',`#/intake/${n}`); render(); }
 function applyPreset(){ const p=PRESETS[S.goal]; if(!p) return; Object.assign(S,{dur:p.dur,format:p.format,plat:Object.assign({yt:false,fb:false,tt:false,ig:false},p.plat)}); if(p.capStyle) S.capStyle=p.capStyle; if(p.energy) S.energy=p.energy; S.presetApplied=S.goal; }
 function applyBundles(){ const fw=forcedWords(); S.banned=[...new Set(fw.concat(S.banned.filter(w=>!Object.values(BUNDLES).some(b=>(b.banned_words||[]).includes(w)))))]; if(!fw.length&&!S.banned.length) S.banned=['miracle','guaranteed'];
-  if(kidsForced()){ S.kids=true; S.plat={yt:true,fb:false,tt:false,ig:false}; } if(forcedDisc()) S.disclaimer=true; }
-function onNiche(v){ const n=N(v); S.sub=n.subs[0]?n.subs[0][0]:null; const pre=M3.BANNED_PRESET[v]; S.banned=pre?pre.slice():['miracle','guaranteed']; if(v==='kids_learning') S.kids=true; applyBundles();
+  if(kidsForced()){ S.kids=true; S.plat={yt:true,fb:false,tt:false,ig:false}; S.kidsBundle=true; }
+  else { if(S.kidsBundle){ S.kids=false; const pr=PRESETS[S.goal]; S.plat=Object.assign({yt:false,fb:false,tt:false,ig:false},pr?pr.plat:{yt:true,fb:true,ig:true}); S.kidsBundle=false; }
+    if(kidsBlocked()) S.kids=false; }
+  if(forcedDisc()) S.disclaimer=true; }
+function onNiche(v){ const n=N(v); S.sub=n.subs[0]?n.subs[0][0]:null; const pre=M3.BANNED_PRESET[v]; S.banned=pre?pre.slice():['miracle','guaranteed']; S.kids=false; applyBundles();
   if(REAL){ const f=RD.fit[`${v}/${S.sub}`]; if(f&&f.default&&STYLES.find(x=>x.id===f.default)) S.style=f.default; } S.topic=0; }
 function exportIntake(){ const blob=new Blob([JSON.stringify({app:'3x3',kind:'intake',version:1,exported_at:new Date().toISOString(),intake:intakeSnapshot()},null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`3x3-intake-${(S.name||'project').toLowerCase().replace(/[^a-z0-9]+/g,'-')}.json`; document.body.appendChild(a); a.click(); a.remove(); }
@@ -583,7 +588,7 @@ function intakeClick(e){
     if(S.locked&&!['create','newversion','viewver','acc','export','play','newintake'].includes(a.dataset.act)){ App.toast(`v${S.version} is locked. Use "Edit as v${S.version+1}" on Review.`,'err'); return; }
     switch(a.dataset.act){
       case 'play': S.playing = S.playing===v?null:v; break;
-      case 'tog': S[v]=!S[v]; changed=v; break;
+      case 'tog': if(v==='kids'&&(kidsForced()||kidsBlocked())) return; S[v]=!S[v]; changed=v; break;
       case 'ack': S.aiAck=a.checked; changed='aiAck'; break;
       case 'plat': if(kidsForced()&&v!=='yt'){ App.toast('Kids projects publish to YouTube only (COPPA bundle)','err'); return; } S.plat[v]=!S.plat[v]; changed='plat'; break;
       case 'preset': applyPreset(); break;
