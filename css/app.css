@@ -271,3 +271,4 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.92em;background:rgba(25
 .shd .grow,.chd .grow,.obstep .grow{flex:1;min-width:0}
 .ccard .btn{align-self:flex-start}
 .stills{grid-template-columns:repeat(auto-fill,minmax(74px,1fr))}
+.chip.word.forced{opacity:.95;border-color:rgba(139,92,246,.45);background:rgba(139,92,246,.1)}.chip.word.forced svg{width:12px;height:12px}

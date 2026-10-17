@@ -157,7 +157,7 @@ if (REAL) {
     .filter(x=>x[1]>=0.5).sort((a,b)=>b[1]-a[1]).slice(0,4).forEach(x=>x[0].best.push(g.id)); });
   const BG = {
     photoreal_macro:'radial-gradient(circle at 55% 50%,#6b4423 0 8%,transparent 9%),radial-gradient(ellipse 30% 40% at 55% 50%,#e3ee9a,#9cc244 70%,transparent 72%),radial-gradient(ellipse 36% 47% at 55% 50%,#2f5016 95%,transparent 97%),linear-gradient(150deg,#4a3420,#120c06)',
-    vox_collage:'linear-gradient(8deg,transparent 40%,#f2c94c 40% 47%,transparent 47%),linear-gradient(-12deg,transparent 55%,rgba(30,30,30,.75) 55% 75%,transparent 75%),repeating-radial-gradient(circle at 30% 40%,#c9b99a 0 1px,transparent 1px 4px),#e8dcc4',
+    editorial_collage:'linear-gradient(8deg,transparent 40%,#f2c94c 40% 47%,transparent 47%),linear-gradient(-12deg,transparent 55%,rgba(30,30,30,.75) 55% 75%,transparent 75%),repeating-radial-gradient(circle at 30% 40%,#c9b99a 0 1px,transparent 1px 4px),#e8dcc4',
     papercut:'radial-gradient(ellipse 80% 40% at 50% 110%,#2f6b4f 60%,transparent 61%),radial-gradient(ellipse 70% 40% at 20% 100%,#4b9a6e 60%,transparent 61%),radial-gradient(ellipse 80% 45% at 80% 95%,#7cc49a 60%,transparent 61%),linear-gradient(#ffd9a8,#f6a77a)',
     stickman:'#f4f4f0', whiteboard:'#fbfbf8',
     clay_3d:'radial-gradient(circle at 35% 55%,#ff9db0 0 16%,transparent 17%),radial-gradient(circle at 65% 45%,#8fd3ff 0 20%,transparent 21%),radial-gradient(circle at 50% 75%,#ffe08a 0 12%,transparent 13%),linear-gradient(#f3e9ff,#d9c8f5)',
@@ -191,7 +191,7 @@ const S = {step:1,max:1,goal:REAL?'fb_monetization':'facebook',niche:REAL?'healt
   acc:true,locked:false,locking:false,topic:0,
   vo:true,aiAck:false,aiTag:true,kids:false,noClaims:false,ownTopic:'',ackErr:false,projectId:null,compAck:false,version:1,versions:[]};
 const S_DEFAULT = JSON.parse(JSON.stringify(S));
-(function(){ const d=window.Store&&Store.getDraft(); if(d&&d.goal&&GOALS.find(g=>g.id===d.goal)) Object.assign(S,d,{locking:false,playing:null,ackErr:false}); else S.playing=null; })();
+(function(){ const d=window.Store&&Store.getDraft(); if(d&&REAL&&RD.renamed&&RD.renamed[d.style]) d.style=RD.renamed[d.style]; if(d&&d.goal&&GOALS.find(g=>g.id===d.goal)) Object.assign(S,d,{locking:false,playing:null,ackErr:false}); else S.playing=null; })();
 const TRANSIENT=['locking','playing','ackErr'];
 function saveDraft(){ if(!window.Store) return; const o={}; Object.keys(S).forEach(k=>{ if(!TRANSIENT.includes(k)) o[k]=S[k]; }); Store.saveDraft(o); const el=document.querySelector('.saved'); if(el){ el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); el.lastChild.textContent=' Autosaved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }
 const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic'];
@@ -199,8 +199,16 @@ const intakeSnapshot=()=>{ const o={}; INTAKE_FIELDS.forEach(k=>o[k]=JSON.parse(
 const REALISTIC=['photoreal_macro','archival_doc','photoreal','cinematic'];
 const isRealistic=()=>REALISTIC.includes(S.style);
 const affOn=()=>S.goal==='affiliate';
-const claimsOn=()=>M3.needsNoClaims(S)||S.noClaims;
-const highRisk=()=>M3.needsNoClaims(S)||S.niche==='kids_learning'||S.kids||((curSub()||{}).risk==='high');
+const claimsOn=()=>M3.needsNoClaims(S)||S.noClaims||(typeof bundleList==='function'&&bundleList().some(b=>b.banned_claims&&b.banned_claims.length));
+const BUNDLES=(REAL&&RD.bundles)||{};
+const bundleIds=()=>{ const sb=curSub(); const b=(sb&&sb.bundles)?sb.bundles.slice():[]; if(!REAL&&S.niche==='kids_learning') b.push('kids'); return b; };
+const bundleList=()=>bundleIds().map(id=>Object.assign({id},BUNDLES[id]||{})).filter(b=>b.forced!==false);
+const hasBundle=id=>bundleIds().includes(id);
+const forcedDisc=()=>{ const b=bundleList().filter(x=>x.disclaimer&&x.disclaimer.required); return b.find(x=>x.id==='crypto')||b.find(x=>x.id==='finance')||b[0]||null; };
+const kidsForced=()=>hasBundle('kids');
+const forcedWords=()=>[...new Set(bundleList().flatMap(b=>b.banned_words||[]))];
+const blockedGoal=()=>{ const b=bundleList().find(x=>(x.goals_blocked||[]).includes(S.goal)); return b?b:null; };
+const highRisk=()=>!!forcedDisc()||kidsForced()||M3.needsNoClaims(S)||((curSub()||{}).risk==='high');
 const discOn=()=>S.disclaimer||highRisk();
 const PRESETS={yt_monetization:{dur:45,format:'list',plat:{yt:true},capStyle:'pop'},fb_monetization:{dur:60,format:'story',plat:{fb:true,ig:true}},tiktok_rewards:{dur:90,format:'story',plat:{tt:true}},
   affiliate:{dur:30,format:'list',plat:{yt:true,fb:true,tt:true,ig:true}},ecommerce:{dur:30,format:'reveal',plat:{fb:true,ig:true,tt:true}},digital_product:{dur:45,format:'reveal',plat:{yt:true,fb:true}},
@@ -363,18 +371,18 @@ const VIEWS = {
      <div class="field"><span>Loudness target</span><div class="fixed"><b>−14 LUFS</b><span class="badge mute">Fixed</span><span class="lk">${ic('lock')}</span>
        <span class="tip" style="margin-left:auto">${ic('info')}<span class="tt">Normalised to −14 LUFS integrated, −1 dBTP true peak: the level YouTube, Facebook and TikTok target, so videos don't get turned down or sound quiet next to others.</span></span></div></div>
    </div>`; },
-8(){ return sh('Safety & platforms','Guardrails every script must pass, and where you plan to publish.')+
+8(){ return sh('Safety & platforms','Guardrails every script must pass, and where you plan to publish.')+bundleBanner()+
   `<div class="panel st"><div class="lbl" style="margin-top:0">${ic('shield')}Banned words ${M3.BANNED_PRESET[S.niche]?`<span class="badge grn" style="text-transform:none;letter-spacing:0">Prefilled for ${esc(N(S.niche).n)}</span>`:''}<span class="r" style="color:var(--dim)">Scripts using these are rewritten</span></div>
-    <div class="chips">${S.banned.map((w,i)=>`<span class="chip word">${w}<button class="x" data-act="delword" data-val="${i}">${ic('x')}</button></span>`).join('')}
+    <div class="chips">${S.banned.map((w,i)=>forcedWords().includes(w)?`<span class="chip word forced" title="Forced by the ${esc(bundleList().map(b=>b.name).join(' / '))} rule bundle">${ic('lock')}${esc(w)}</span>`:`<span class="chip word">${esc(w)}<button class="x" data-act="delword" data-val="${i}" aria-label="Remove ${esc(w)}">${ic('x')}</button></span>`).join('')}
       <span class="addin"><input id="bw" placeholder="Add a word…"><button class="btn" data-act="addword" style="padding:4px 8px;border-radius:99px">${ic('plus')}</button></span></div>
     <div class="row" style="margin-top:10px;gap:6px;font-size:12px;color:var(--dim)">Suggested: ${suggestWords().filter(w=>!S.banned.includes(w)).map(w=>`<button class="chip ghost" style="padding:3px 10px;font-size:12px" data-act="sugword" data-val="${w}">+ ${w}</button>`).join('')}</div></div>
   <div class="grid g2" style="margin-top:12px">
-    <div class="trow st" style="flex-wrap:wrap"><div class="tx"><h4>${S.niche==='finance'?'Finance disclaimer':'Disclaimer'}</h4><p>Shown on the first frame and in the description</p></div><div class="tog ${discOn()?'on':''} ${highRisk()?'locked':''}" ${highRisk()?'aria-disabled="true" title="Always on for high-risk niches"':'data-act="tog" data-val="disclaimer"'}></div>
-      ${highRisk()?`<p style="flex-basis:100%;font-size:11.5px;color:var(--mute)">${ic('lock')} Locked on: health, finance, crypto and kids niches always show a disclaimer.</p>`:''}
+    <div class="trow st" style="flex-wrap:wrap"><div class="tx"><h4>${forcedDisc()&&forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer (not financial advice)':'Disclaimer'}</h4><p>Shown on the first frame and in the description</p></div><div class="tog ${discOn()?'on':''} ${highRisk()?'locked':''}" ${highRisk()?'aria-disabled="true" title="Always on for high-risk niches"':'data-act="tog" data-val="disclaimer"'}></div>
+      ${highRisk()?`<p style="flex-basis:100%;font-size:11.5px;color:var(--mute)">${ic('lock')} Locked on by the forced rule bundle${bundleList().length?': '+esc(bundleList().map(b=>b.name).join(' · ')):''}. You can't turn it off.</p>`:''}
       ${discOn()?`<div class="disc ${A('disclaimer')}" style="flex-basis:100%">${disclaimerText()}</div>`:''}</div>
     <div class="trow st" style="align-items:flex-start"><div class="tx"><h4>Cite a source for every fact <span class="badge mute">${ic('lock')}Locked on</span></h4><p>Each claim in the script carries a source URL that reviewers can check before approval.</p></div><div class="tog on locked" title="Always on"></div></div></div>
   <div class="lbl st">Publish to</div>
-  <div class="grid g4">${PLATS.map(p=>`<button class="card plat st ${S.plat[p.id]?'sel':''}" data-act="plat" data-val="${p.id}"><div class="ico" style="--c:${p.c}1f;--cc:${p.c}">${ic(p.i)}</div><h3>${p.n}</h3><span class="cbx">${ic('check')}</span></button>`).join('')}</div>
+  <div class="grid g4">${PLATS.map(p=>`<button class="card plat st ${S.plat[p.id]?'sel':''}" data-act="plat" data-val="${p.id}" ${kidsForced()&&p.id!=='yt'?'disabled title="Kids projects publish to YouTube only"':''}><div class="ico" style="--c:${p.c}1f;--cc:${p.c}">${ic(p.i)}</div><h3>${p.n}</h3><span class="cbx">${ic('check')}</span></button>`).join('')}</div>
   ${S.plat.tt&&S.dur<=60?`<p class="st" style="margin-top:10px;font-size:12px;color:#ffb1b5">${ic('info')} TikTok Creator Rewards only counts videos over 1 minute; current duration is ${S.dur}s.</p>`:''}
   ${step8Extra()}`; },
 9(){ const items=[['Goal',G(S.goal).n,'Primary monetization path',1],['Niche',`${N(S.niche).n} › ${subName()}`,REAL?`Compliance: ${(curSub()||{}).risk||'—'}`:'Example data',2],
@@ -394,7 +402,8 @@ const VIEWS = {
         <input class="inp" id="ownT" data-in="ownTopic" placeholder="e.g. 5 fruits with more fibre than oats" value="${esc(S.ownTopic)}" style="margin-top:8px"></div></div>
     <div class="next st"><div class="n">${ic('edit')}</div><div><b>Next: Script (approval 1)</b><p>Creates a project and sends the first jobs to your Grok Bot worker (simulated in this test build): Rules, then a ${S.dur}s script for "${esc(curTopic())}". You approve it before any voice or visuals are made.</p></div><button class="btn pri" data-act="create">${S.projectId?'Open project':'Create project & start'} ${ic('ar')}</button></div>`;
   return sh('Review & lock','Check every choice. Locking turns them into global rules every video follows.',`<div class="row" style="gap:8px"><button class="btn ghost" data-act="export">${ic('dl')}Export JSON</button><label class="btn ghost" style="cursor:pointer">${ic('up')}Import JSON<input type="file" accept="application/json,.json" id="impFile" hidden></label></div>`)+
-  `${!S.aiAck?`<div class="errbanner st">${ic('warn')}<div><b>AI disclosure isn't confirmed.</b> It's required before you can lock. <a data-go="8">Go to step 8 →</a></div></div>`:''}
+  `${blockedGoal()?`<div class="errbanner st">${ic('warn')}<div><b>${esc(G(S.goal).n)} isn't allowed for ${esc(subName())}.</b> The ${esc(blockedGoal().name)} bundle blocks this goal (no exchange or token referral links). <a data-go="1">Change goal →</a> or <a data-go="2">change niche →</a></div></div>`:''}
+  ${!S.aiAck?`<div class="errbanner st">${ic('warn')}<div><b>AI disclosure isn't confirmed.</b> It's required before you can lock. <a data-go="8">Go to step 8 →</a></div></div>`:''}
   ${reviewWarnings()}
   <div class="grid g3">${items.map(([k,v,s,n])=>`<div class="card rv st"><div class="k">${k}<a data-go="${n}">${ic('edit')}Edit</a></div><div class="val">${esc(v)}</div><div class="sub">${esc(s)}</div></div>`).join('')}</div>
   ${costEstimate()}
@@ -431,10 +440,10 @@ function monoWarnings(){ const w=[];
   if(S.goal==='affiliate') w.push('Every affiliate video must carry a disclosure. 3x3 adds it on screen and in the caption automatically.');
   return w; }
 function suggestWords(){ return ({health_nutrition:['burn fat','boost immunity','superfood','miracle'],human_body:['instant relief','doctors hate','miracle'],finance:['passive income guaranteed','no risk','insider tip','100x'],local_business:['cheapest','guaranteed results']})[S.niche]||['miracle','guaranteed','shocking','secret']; }
-function disclaimerText(){ if(S.niche==='finance') return 'Educational only, not financial advice. Do your own research.'; if(['health_nutrition','human_body'].includes(S.niche)||S.sub==='clinic_education') return REAL?RD.rules.safety.disclaimer.on_screen:'General information, not medical advice.'; return 'For general information only.'; }
+function disclaimerText(){ const fd=forcedDisc(); if(fd&&fd.disclaimer.on_screen) return fd.disclaimer.on_screen;  if(S.niche==='finance') return 'Educational only, not financial advice. Do your own research.'; if(['health_nutrition','human_body'].includes(S.niche)||S.sub==='clinic_education') return REAL?RD.rules.safety.disclaimer.on_screen:'General information, not medical advice.'; return 'For general information only.'; }
 function shortDisc(){ return S.niche==='finance'?'Not financial advice':(['health_nutrition','human_body'].includes(S.niche)?'Not medical advice':'General info'); }
 const CLAIM_RULES={health:(REAL&&RD.rules.safety.claim_rules)||['No disease treatment/prevention claims'],finance:['No promised or "guaranteed" returns','No personalised investment, crypto or tax advice','Show risk on any return figure','No AI persona presented as a licensed adviser']};
-function claimRules(){ return S.niche==='finance'||/invest|credit|crypto/.test(S.sub||'')?CLAIM_RULES.finance:CLAIM_RULES.health; }
+function claimRules(){ const bc=[...new Set(bundleList().flatMap(b=>b.banned_claims||[]))]; if(bc.length) return bc.map(x=>'No '+x.replace(/^no /i,'')); return S.niche==='finance'||/invest|credit|crypto/.test(S.sub||'')?CLAIM_RULES.finance:CLAIM_RULES.health; }
 function aiPlatSummary(){ const p=Object.keys(S.plat).filter(k=>S.plat[k]); return p.length?p.map(k=>M3.AI_DISCLOSURE[k].label).filter((v,i,a)=>a.indexOf(v)===i).join(' · '):'No platforms selected'; }
 function step8Extra(){ const plats=Object.keys(S.plat).filter(k=>S.plat[k]); const auto=M3.needsNoClaims(S);
   return `<div class="panel st aipanel ${S.ackErr?'shake':''}" id="aiDisc"><div class="lbl" style="margin-top:0">${ic('eye')}AI disclosure <span class="badge red" style="text-transform:none;letter-spacing:0">${ic('lock')}Required · can't be skipped</span></div>
@@ -447,7 +456,8 @@ function step8Extra(){ const plats=Object.keys(S.plat).filter(k=>S.plat[k]); con
   <div class="grid g2" style="margin-top:12px">
     <div class="trow st" style="align-items:flex-start;flex-wrap:wrap"><div class="tx"><h4>No-claims rules ${auto?`<span class="badge mute">${ic('lock')}Auto-on for this niche</span>`:''}</h4><p>${auto?'Health, finance and crypto topics always run strict claim checks.':'Optional for this niche.'}</p></div><div class="tog ${claimsOn()?'on':''} ${auto?'locked':''}" ${auto?'':'data-act="tog" data-val="noClaims"'}></div>
       ${claimsOn()?`<ul class="claimlist">${claimRules().map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:''}</div>
-    <div class="trow st" style="align-items:flex-start"><div class="tx"><h4>${ic('kid')} Made for kids</h4><p>YouTube COPPA setting. When on, comments and personalised ads are off, and the script avoids anything not suitable for under-13s.${S.niche==='kids_learning'&&!S.kids?' <b style="color:#ffcf7a">Recommended for Kids & learning.</b>':''}</p></div><div class="tog ${S.kids?'on':''}" data-act="tog" data-val="kids"></div></div>
+    <div class="trow st" style="align-items:flex-start;flex-wrap:wrap"><div class="tx"><h4>${ic('kid')} Made for kids</h4><p>YouTube COPPA setting. When on, comments and personalised ads are off, and the script avoids anything not suitable for under-13s.${S.niche==='kids_learning'&&!S.kids?' <b style="color:#ffcf7a">Recommended for Kids & learning.</b>':''}</p></div><div class="tog ${S.kids||kidsForced()?'on':''} ${kidsForced()?'locked':''}" ${kidsForced()?'aria-disabled="true"':'data-act="tog" data-val="kids"'}></div>
+      ${kidsForced()?`<p style="flex-basis:100%;font-size:11.5px;color:var(--mute);margin-top:6px">${ic('lock')} Forced by the Made for kids (COPPA) bundle. ${esc((BUNDLES.kids||{}).platform_note||'Kids projects publish to YouTube only.')}</p>`:''}</div>
   </div>`; }
 function lum(h){ const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(x=>x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4)); return .2126*c[0]+.7152*c[1]+.0722*c[2]; }
 function cr(a,b){ try{ const x=lum(a),y=lum(b); return (Math.max(x,y)+.05)/(Math.min(x,y)+.05); }catch(e){ return 1; } }
@@ -456,7 +466,8 @@ function contrastBox(){ const P=S.pal, rows=[['Text on background',P.text,P.bg],
   const wt=cr('#FFFFFF',P.hl);
   return `<div class="lbl">Contrast check <span class="r" style="color:var(--dim)">WCAG AA needs 4.5:1</span></div><div class="contrast">${rows.map(([n,f,b])=>{const r=cr(f,b);return `<div class="crow ${r>=4.5?'pass':'fail'}"><span class="sw2" style="color:${f};background:${b}">Aa</span><span>${n}</span><b>${r.toFixed(2)}:1 ${r>=4.5?'✓':'✗ too low'}</b></div>`}).join('')}
    ${wt<4.5?`<div class="crow fail"><span class="sw2" style="color:#fff;background:${P.hl}">Aa</span><span>White text on highlight is blocked</span><b>${wt.toFixed(2)}:1</b></div>`:''}</div>`; }
-function canLock(){ return S.aiAck&&S.compAck; }
+function bundleBanner(){ const bl=bundleList(); if(!bl.length) return ''; return `<div class="infobox st" style="background:rgba(139,92,246,.07);border-color:rgba(139,92,246,.35)">${ic('lock')}<div><b>Forced rule bundle${bl.length>1?'s':''}: ${esc(bl.map(b=>b.name).join(' · '))}</b><br>These settings are locked for ${esc(subName())}: ${[forcedDisc()?(forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer':'disclaimer'):'', claimsOn()?'no-claims rules':'', kidsForced()?'made for kids + YouTube only':'', forcedWords().length?forcedWords().length+' banned words':''].filter(Boolean).join(' · ')}.${blockedGoal()?` <b style="color:#ffb1b5">Your goal (${esc(G(S.goal).n)}) is blocked for this niche.</b>`:''}</div></div>`; }
+function canLock(){ return S.aiAck&&S.compAck&&!blockedGoal(); }
 function versionsList(){ if(!S.versions||!S.versions.length) return ''; return `<div class="verlist st"><span class="muted" style="align-self:center">Locked versions (read-only):</span>${S.versions.slice().sort((a,b)=>a.v-b.v).map(v=>`<button class="badge ${v.v===S.version&&S.locked?'grn':'mute'}" data-act="viewver" data-val="${v.v}" title="Open read-only JSON">${ic('lock')}v${v.v} · ${new Date(v.locked_at).toLocaleDateString([], {month:'short',day:'numeric'})} · ${v.intake_hash.slice(0,8)}</button>`).join('')}</div>`; }
 function curTopic(){ return S.topic===-1?(S.ownTopic||'Your own topic'):(topics()[S.topic]||topics()[0]).t; }
 function reviewWarnings(){ const ws=M3.warnings(intakeSnapshot(), Store.getConnections()); if(!ws.length) return `<div class="okline st">${ic('check')}All connections this intake needs are ready.</div>`;
@@ -480,7 +491,7 @@ function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S
     brand:{name:S.name,handle:S.handle,palette:S.pal,fonts:[S.fh,S.fb],end_card:S.end},
     captions:{style:S.capStyle,position:S.capPos,counter:S.counter,on_every_frame:true,safe_zone_px:{top:250,bottom:400},affiliate_line:affOn()?M3.AFFILIATE_LINE:null},
     audio:{music:S.music,sfx:S.sfx.toLowerCase(),lufs:-14,true_peak_db:-1},
-    safety:{banned_words:S.banned,no_claims:claimsOn()?claimRules():false,disclaimer:discOn()?{text:disclaimerText(),locked:highRisk()}:false,cite_sources:true,made_for_kids:S.kids},
+    rule_bundles_applied:bundleIds(), safety:{banned_words:S.banned,no_claims:claimsOn()?claimRules():false,disclaimer:discOn()?{text:disclaimerText(),locked:highRisk()}:false,cite_sources:true,made_for_kids:S.kids||kidsForced(), made_for_kids_forced:kidsForced()},
     ai_disclosure:{required:true,acknowledged:S.aiAck,on_screen_tag:S.aiTag||isRealistic(),photoreal:isRealistic(),platforms:Object.fromEntries(plats.map(k=>[k,M3.AI_DISCLOSURE[k].label]))},
     affiliate_disclosure:affOn()?{required:true,on_screen:true,in_description:true,text:M3.AFFILIATE_LINE}:null,
     platforms:plats, publish_via:'official APIs only', gates:['script','stills','video','final'], approvals:'hash-locked'}; }
@@ -511,7 +522,9 @@ function go(n){ n=Math.max(1,Math.min(9,n)); if(n===S.step) return;
   if(n>8 && !S.aiAck && !S.locked){ if(S.step!==8){ S.step=8; stepChanged=true; } S.ackErr=true; S.max=Math.max(S.max,8); history.replaceState(null,'','#/intake/8'); render(); const a=document.getElementById('aiDisc'); a&&a.scrollIntoView({block:'center'}); return; }
   S.step=n; S.max=Math.max(S.max,n); stepChanged=true; history.replaceState(null,'',`#/intake/${n}`); render(); }
 function applyPreset(){ const p=PRESETS[S.goal]; if(!p) return; Object.assign(S,{dur:p.dur,format:p.format,plat:Object.assign({yt:false,fb:false,tt:false,ig:false},p.plat)}); if(p.capStyle) S.capStyle=p.capStyle; if(p.energy) S.energy=p.energy; S.presetApplied=S.goal; }
-function onNiche(v){ const n=N(v); S.sub=n.subs[0]?n.subs[0][0]:null; const pre=M3.BANNED_PRESET[v]; S.banned=pre?pre.slice():['miracle','guaranteed']; if(v==='kids_learning') S.kids=true;
+function applyBundles(){ const fw=forcedWords(); S.banned=[...new Set(fw.concat(S.banned.filter(w=>!Object.values(BUNDLES).some(b=>(b.banned_words||[]).includes(w)))))]; if(!fw.length&&!S.banned.length) S.banned=['miracle','guaranteed'];
+  if(kidsForced()){ S.kids=true; S.plat={yt:true,fb:false,tt:false,ig:false}; } if(forcedDisc()) S.disclaimer=true; }
+function onNiche(v){ const n=N(v); S.sub=n.subs[0]?n.subs[0][0]:null; const pre=M3.BANNED_PRESET[v]; S.banned=pre?pre.slice():['miracle','guaranteed']; if(v==='kids_learning') S.kids=true; applyBundles();
   if(REAL){ const f=RD.fit[`${v}/${S.sub}`]; if(f&&f.default&&STYLES.find(x=>x.id===f.default)) S.style=f.default; } S.topic=0; }
 function exportIntake(){ const blob=new Blob([JSON.stringify({app:'3x3',kind:'intake',version:1,exported_at:new Date().toISOString(),intake:intakeSnapshot()},null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`3x3-intake-${(S.name||'project').toLowerCase().replace(/[^a-z0-9]+/g,'-')}.json`; document.body.appendChild(a); a.click(); a.remove(); }
@@ -529,9 +542,9 @@ function intakeClick(e){
       case 'play': S.playing = S.playing===v?null:v; break;
       case 'tog': S[v]=!S[v]; changed=v; break;
       case 'ack': S.aiAck=a.checked; changed='aiAck'; break;
-      case 'plat': S.plat[v]=!S.plat[v]; changed='plat'; break;
+      case 'plat': if(kidsForced()&&v!=='yt'){ App.toast('Kids projects publish to YouTube only (COPPA bundle)','err'); return; } S.plat[v]=!S.plat[v]; changed='plat'; break;
       case 'preset': applyPreset(); break;
-      case 'delword': S.banned.splice(+v,1); break;
+      case 'delword': if(forcedWords().includes(S.banned[+v])) return; S.banned.splice(+v,1); break;
       case 'sugword': S.banned.push(v); break;
       case 'addword': {const i=document.getElementById('bw'); if(i.value.trim()) S.banned.push(i.value.trim().toLowerCase()); break;}
       case 'delpron': S.pron.splice(+v,1); break;
@@ -555,6 +568,7 @@ function intakeClick(e){
   if(s){ const k=s.dataset.set; let v=s.dataset.val; if(k==='dur'||k==='topic') v=+v;
     if(S[k]===v) return; S[k]=v; changed=k;
     if(k==='niche') onNiche(v);
+    if(k==='sub'){ applyBundles(); }
     if(k==='sub'&&REAL){ const f=RD.fit[`${S.niche}/${v}`]; if(f&&f.default&&STYLES.find(x=>x.id===f.default)) S.style=f.default; S.topic=0; }
     render(); }
 }
@@ -575,7 +589,7 @@ window.addEventListener('resize',()=>window.INTAKE_ON&&placePills());
 
 window.Intake = {
   html(){ return `<div class="body"><aside class="rail" id="rail"></aside><main class="main"><div class="mob-steps" id="mob"></div><div class="scroll" id="scroll"><div id="content"></div></div><div class="foot" id="foot"></div></main><aside class="sum" id="sum"></aside></div>`; },
-  mount(step){ window.INTAKE_ON=true; if(step){ S.step=Math.max(1,Math.min(9,step)); if(S.step>8&&!S.aiAck&&!S.locked) { S.step=8; } S.max=Math.max(S.max,S.step); } stepChanged=true; render(); },
+  mount(step){ window.INTAKE_ON=true; if(!window._bundlesApplied){ window._bundlesApplied=true; if(!S.locked) applyBundles(); } if(step){ S.step=Math.max(1,Math.min(9,step)); if(S.step>8&&!S.aiAck&&!S.locked) { S.step=8; } S.max=Math.max(S.max,S.step); } stepChanged=true; render(); },
   unmount(){ window.INTAKE_ON=false; },
   state:S, snapshot:intakeSnapshot, rerender(){ if(window.INTAKE_ON){ render(); } },
   reset(){ Object.assign(S, JSON.parse(JSON.stringify(S_DEFAULT)), {playing:null}); },

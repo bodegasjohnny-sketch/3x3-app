@@ -9,7 +9,7 @@ step 8 gate OK
 shot 08-intake-safety-ai
 shot 09-intake-review
 shot 10-intake-locked
-project http://localhost:8765/?static=1#/project/prj_p9alo297kr
+project http://localhost:8765/?static=1#/project/prj_q1zc59eigq
 shot 11-project-needs-you
 shot 12-connections-missing
 real-key rejected: That looks like a real key, so it was rejected and not saved
@@ -28,6 +28,9 @@ shot 19-project-complete
 shot 20-projects
 shot 21-onboarding
 version now 2 locked versions 1
+crypto bundle: {'disc': 'Education only. Not financial advice. Crypto is high risk.', 'discLocked': True, 'forced': 18}
+crypto+affiliate lock disabled: True
+kids bundle: {'kids': True, 'plat': {'yt': True, 'fb': False, 'tt': False, 'ig': False}, 'kidsLocked': 3, 'disabledPlats': 3}
 shot m1-intake-goal
 shot m2-intake-brand
 shot m3-intake-safety

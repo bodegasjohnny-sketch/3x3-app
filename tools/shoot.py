@@ -74,6 +74,22 @@ with sync_playwright() as p:
     # intake versioning
     pg.goto(BASE + '#/intake/9'); pg.wait_for_timeout(500); pg.click('[data-act="newversion"]'); pg.wait_for_timeout(400)
     L('version now', pg.evaluate('Intake.state.version'), 'locked versions', pg.evaluate('Intake.state.versions.length'))
+    # forced rule bundles (fresh context)
+    bx = b.new_context(viewport={'width':1440,'height':900}); bp = bx.new_page(); bp.on('pageerror', lambda e: errs.append('B PAGEERR ' + str(e)))
+    bp.goto(BASE + '#/intake/2'); bp.wait_for_timeout(500)
+    bp.click('[data-set="niche"][data-val="finance"]'); bp.wait_for_timeout(200); bp.click('[data-set="sub"][data-val="crypto_basics"]'); bp.wait_for_timeout(200)
+    bp.goto(BASE + '#/intake/1'); bp.wait_for_timeout(300); bp.click('[data-set="goal"][data-val="affiliate"]'); bp.wait_for_timeout(200)
+    bp.goto(BASE + '#/intake/8'); bp.wait_for_timeout(500); bp.check('#aiDisc input[type=checkbox]'); bp.wait_for_timeout(200)
+    r = bp.evaluate("({disc:document.querySelector('.disc')&&document.querySelector('.disc').textContent, discLocked:!!document.querySelector('.trow .tog.locked[aria-disabled]'), forced:document.querySelectorAll('.chip.word.forced').length})")
+    L('crypto bundle:', r); assert r['discLocked'] and 'Not financial advice' in (r['disc'] or '')
+    bp.screenshot(path=str(O/'22-bundle-crypto-safety.png'), full_page=True)
+    bp.goto(BASE + '#/intake/9'); bp.wait_for_timeout(400); bp.check('[data-act="compack"]'); bp.wait_for_timeout(200)
+    L('crypto+affiliate lock disabled:', bp.is_disabled('.lockbtn')); assert bp.is_disabled('.lockbtn')
+    bp.goto(BASE + '#/intake/2'); bp.wait_for_timeout(300); bp.click('[data-set="niche"][data-val="kids_learning"]'); bp.wait_for_timeout(200)
+    bp.goto(BASE + '#/intake/8'); bp.wait_for_timeout(400)
+    k = bp.evaluate("({kids:Intake.state.kids, plat:Intake.state.plat, kidsLocked:[...document.querySelectorAll('.tog.locked')].length, disabledPlats:document.querySelectorAll('.plat[disabled]').length})")
+    L('kids bundle:', k); assert k['kids'] and k['disabledPlats'] == 3
+    bp.screenshot(path=str(O/'23-bundle-kids-safety.png'), full_page=True); bx.close()
     # mobile
     m = b.new_context(viewport={'width':390, 'height':844}, device_scale_factor=2, is_mobile=True, has_touch=True)
     mp = m.new_page(); mp.on('pageerror', lambda e: errs.append('M PAGEERR ' + str(e)))

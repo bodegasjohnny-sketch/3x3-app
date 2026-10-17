@@ -11,6 +11,7 @@ Front end for Johnny Bodegas's video-automation app. **Static, simulated, noinde
   - Brand step: live 9:16 preview with the 250px top / 400px bottom safe zones and a WCAG contrast check. White text on the highlight colour is blocked, and pill text automatically switches to dark.
   - Affiliate goal: a disclosure line is inserted automatically into the caption previews, end card, rules and final output.
   - Step 8: **mandatory AI disclosure**, mapped per platform (YouTube "Altered or synthetic content", Meta "AI info", TikTok "AI-generated content"). It can't be skipped, the on-screen tag is locked on for photoreal styles, and Continue/Lock are blocked until it's acknowledged. No-claims rules are always on for health, finance and crypto. The disclaimer is locked on for high-risk niches (health, finance, crypto, kids). Made-for-kids toggle.
+  - **Forced rule bundles** (from `taxonomy.json` `rule_bundles`: health, finance, crypto, kids) lock their toggles: the disclaimer (NFA for finance/crypto), no-claims rules, the bundle's banned words (they can't be removed), and made-for-kids with YouTube-only publishing (kids). The crypto bundle blocks the affiliate, e-commerce and digital-product goals; Lock is disabled with an explanation.
   - Review: every missing connection links straight to its fix, a per-video cost estimate (labelled as an estimate), a compiled rules JSON preview, export/import of the intake as JSON, and a required **compliance check** before Lock.
   - Locking creates **intake v1 (read-only)**. "Edit as v2" starts a new version; earlier versions stay viewable and can't be changed.
 - **Projects / Project page**: pipeline Rules › Script › Voiceover › Stills › Video › Final stitch › Publish. Status chips: Not started / Running / Needs you / Awaiting approval / Done, plus Failed (with Retry) and Re-approval needed.
@@ -33,6 +34,7 @@ Front end for Johnny Bodegas's video-automation app. **Static, simulated, noinde
 - `js/simulator.js`: local fake worker; delete it when going live.
 - `js/model.js`: connections, stages, requirements/warnings, secret guard, hashing, AI-disclosure map.
 - `js/intake.js`: the intake (from the mockup). `js/pipeline.js`: stage/job state machine. `js/pages.js`: Projects, Project, Connections, Onboarding. `js/app.js`: shell/router.
+- Style IDs follow `styles.json` (`vox_collage` was renamed `editorial_collage`; old drafts are migrated through `renamed_ids`). Studio and brand names are kept out of style names and prompts.
 - `tools/shoot.py`: Playwright end-to-end click-through plus screenshots (`shots/`).
 
 ## Known gaps
