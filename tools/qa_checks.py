@@ -321,6 +321,30 @@ with sync_playwright() as p:
         en = put(lines); ref = E(pl, f"(Pipeline.approve('{lp}','script'), Pipeline.eff(Store.getProject('{lp}'),'script'))")
         ok(f'qa5_bypass_{name}_blocked', en is False and ref == 'awaiting')
     ok('qa5_placeholder_log_names_reason', 'too short' in E(pl, f"Store.getProject('{lp}').log[0].text") and 'needs 3+ real words' in pl.inner_text('#stage-script .phbox'))
+    # spot-check c320dee: punctuation-edge leet, RLO reversal, more lookalikes (UI, all 6 hook/item lines)
+    def _rev(x): return x[::-1]
+    def _edge(f): return mod(lambda x: ' '.join(f(w) for w in x.split(' ')))
+    BYP3 = {
+        'bang_after_every_word': _edge(lambda w: w + '!'), 'pipe_after_every_word': _edge(lambda w: w + '|'), 'at_after_word': _edge(lambda w: w + '@'),
+        'dollar_before_word': _edge(lambda w: '$' + w), 'trailing_digit_1': _edge(lambda w: _re.sub(r'([A-Za-z])([^A-Za-z]*)$', r'\g<1>1\g<2>', w)),
+        'rlo_reversed_template': mod(lambda x: '\u202e' + _rev(x)), 'lri_wrapped_template': mod(lambda x: '\u2067' + x + '\u2069'), 'reversed_template_no_control': mod(_rev),
+        'o_slash': mod(lambda x: x.replace('o', '\u00f8')), 'barred_o': mod(lambda x: x.replace('o', '\u0275')), 'l_stroke': mod(lambda x: x.replace('l', '\u0142')),
+        'cherokee_wi': mod(lambda x: x.replace('o', '\u13eb')), 'regional_indicator_o': mod(lambda x: x.replace('o', '\U0001F1F4')),
+    }
+    for name, lines in BYP3.items():
+        en = put(lines); ref = E(pl, f"(Pipeline.approve('{lp}','script'), Pipeline.eff(Store.getProject('{lp}'),'script'))")
+        ok(f'qa6_bypass_{name}_blocked', en is False and ref == 'awaiting')
+    hook_ok = 'Impulse buys cost more than you think, so here are five habits that stop them.'
+    ok('qa6_short_item_lines_pass_a', put([hook_ok, 'Wait a day.', 'Shop with a list.', 'Use cash.', 'Set a budget.', 'Delete the app.', tl[-1]]) is True)
+    ok('qa6_short_item_lines_pass_b', put([hook_ok, 'Save \u20b1500 a week.', 'Put 20% aside.', 'Mag-ipon ka.', 'Save more.', 'Try it today.', tl[-1]]) is True)
+    ok('qa6_short_lines_with_labels_pass', put([hook_ok, '#5: Wait a day.', '#4: Shop with a list.', '#3: Ask: do I need it?', '#2: Payday = danger.', '#1: No cart, no spend.', tl[-1]]) is True)
+    ok('qa6_two_word_hook_still_blocked', put(['Spend less.', 'Wait a day.', 'Shop with a list.', 'Use cash.', 'Set a budget.', 'Delete the app.', tl[-1]]) is False and 'needs 3+ real words' in pl.inner_text('#stage-script .phbox'))
+    ok('qa6_one_word_or_number_only_items_blocked', put([hook_ok, 'Spend.', '#4: 500.', '#3: \u20b1500 \u20b1600', '.', '\U0001F600', tl[-1]]) is False and E(pl, f"M3.scriptPlaceholders(Store.getProject('{lp}').stages.script.output).length") == 5)
+    ok('qa6_cta_with_bidi_blocked', put(base_ok_pre := ['Impulse buys cost more than you think, so here are five habits that stop them.', 'Number five: wait a full day before any purchase over a few hundred pesos.', 'Number four: delete saved cards from shopping apps so checkout takes effort.', 'Number three: unfollow stores that flood your feed with flash sales.', 'Number two: set a weekly fun budget in cash and stick to it.', 'Number one: write down what you almost bought; most urges fade in a week.', tl[-1]]) is True
+       and E(pl, f"(()=>{{const p=Store.getProject('{lp}'),B=p.stages.script.output.beats;return M3.scriptPlaceholders({{topic:p.stages.script.output.topic,beats:B.slice(0,-1).concat([{{b:'CTA',line:'\\u202eFollow for more'}}])}}).length===1}})()"))
+    put([hook_ok, '\u202e' + _rev('Guaranteed returns, risk-free.'), 'Number four: delete saved cards from shopping apps so checkout takes effort.', 'Number three: unfollow stores that flood your feed with flash sales.', 'Number two: set a weekly fun budget in cash and stick to it.', 'Number one: write down what you almost bought; most urges fade in a week.', tl[-1]])
+    sbt = pl.inner_text('#stage-script')
+    ok('qa6_rlo_reversed_banned_words_caught_in_ui', 'Banned words in the script' in sbt and 'guaranteed returns' in sbt and pl.is_disabled('#stage-script [data-x="approve"]'))
     # genuine rewrites that the old word-share rule blocked must now pass (UI, one line at a time on top of a clean script)
     base_ok = ['Impulse buys cost more than you think, so here are five habits that stop them.', 'Number five: wait a full day before any purchase over a few hundred pesos.', 'Number four: delete saved cards from shopping apps so checkout takes effort.', 'Number three: unfollow stores that flood your feed with flash sales.', 'Number two: set a weekly fun budget in cash and stick to it.', 'Number one: write down what you almost bought; most urges fade in a week.', tl[-1]]
     for name, i, line in [('most_people_wrong_payday', 0, 'Most people get impulse spending wrong, and it costs them every payday.'), ('heres_what_actually_works', 0, "Here's what actually works to stop impulse spending."), ('item_try_today_cart', 1, '#5: One step you can try today: leave it in the cart for a day.')]:
@@ -436,6 +460,23 @@ with sync_playwright() as p:
     ok('qa5_spelled_counts_dropped_for_list', E(pn, "JSON.stringify(Intake.fitSeeds(['The four stages of sleep','Thirteen ways to save','A dozen tips for renters','Eighteen facts about owls','The one habit that changed my savings','Five types of clouds','Why we sleep'],'list',45))") == json.dumps(['The one habit that changed my savings','Five types of clouds','Why we sleep'], separators=(',',':')))
     ok('qa5_real_sleep_seed_four_stages_dropped', E(pn, """(()=>{let s=null;RS_DATA.cats.forEach(c=>c.subs.forEach(x=>{if((x.seeds||[]).includes('The four stages of sleep'))s=x}));return !!s && !Intake.fitSeeds(s.seeds,'list',45).includes('The four stages of sleep') && Intake.fitSeeds(s.seeds,'story',45).includes('The four stages of sleep')})()"""))
     ok('qa5_finance_spelled_amounts_dropped', E(pn, "JSON.stringify(Intake.fitSeeds(['Save twenty five thousand pesos','The fifty-thirty-twenty rule','Sinking funds explained'],'list',45,true))") == json.dumps(['Sinking funds explained'], separators=(',',':')))
+    # spot-check c320dee: disclaimer end rule, splices, bidi in the lint, topic false positives, confusables pin
+    ok('qa6_risk_free_money_after_disclaimer_flagged', E(pn, """(()=>{const d='Education only. Not financial advice. Crypto is high risk.',r={safety:{banned_words:['guaranteed returns','risk-free'],disclaimer:{text:d}}},h=l=>M3.scriptBanned([{line:l}],r);
+      return JSON.stringify(h('Crypto is high risk free money, they say.'))==='["risk-free"]' && h('Crypto is high risk! Then save.').length===0 && h('"Crypto is high risk." Then save.').length===0 && h(d).length===0})()"""))
+    ok('qa6_spliced_crypto_disclaimer_flagged', E(pn, """(()=>{const d='Education only. Not financial advice. Crypto is high risk.',r={safety:{banned_words:['risk-free'],disclaimer:{text:d}}},h=l=>M3.scriptBanned([{line:l}],r);
+      return h('Crypto is high riskNot financial advice-free').length===1 && h('Crypto is high risk-Not financial advice.free').length===1})()"""))
+    ok('qa6_rlo_reversed_banned_unit', E(pn, """(()=>{const rv=s=>[...s].reverse().join('');return JSON.stringify(M3.lintBanned('\\u202e'+rv('Guaranteed returns, risk-free.'),['guaranteed returns','risk-free'],''))==='["guaranteed returns","risk-free"]'
+      && M3.topicBundles('\\u202e'+rv('bitcoin airdrop')).includes('crypto') && M3.visualBidi('ab\\u202ecba\\u202c!')==='ababc!'})()"""))
+    ok('qa6_user_banned_financial_advice_wins_documented', E(pn, "M3.lintBanned('This is not financial advice.',['financial advice'],'For education only. Not financial advice.').length===1 && M3.lintBanned('Not financial advice.',['financial advice'],'For education only. Not financial advice.').length===0")
+       and "your ban wins" in (Path(__file__).resolve().parent.parent / 'README.md').read_text())
+    tfp = E(pn, """(()=>{const fp=['Sol','Sol LeWitt art','History of Sol','Ale Ale','Gin Blossoms','Rum Tum Tugger'].filter(t=>M3.topicBundles(t).length),
+      keep=[['SOL price prediction','crypto'],['Is sol a good buy','crypto'],['$SOL staking','crypto'],['S0L to buy','crypto'],['Solana basics','crypto'],['sol coin','crypto'],['Gin history','alcohol'],['Ale brewing','alcohol'],['History of rum','alcohol'],['Old Gin Mill','alcohol'],['Rum Tum Tugger and rum punch','alcohol']].filter(([t,b])=>!M3.topicBundles(t).includes(b)).map(x=>x[0]);return {fp,keep}})()""")
+    ok('qa6_topic_false_positives_fixed_real_catches_kept', tfp['fp'] == [] and tfp['keep'] == [])
+    bc = (Path(__file__).resolve().parent / 'build_confusables.py').read_text(); cj = (Path(__file__).resolve().parent.parent / 'js' / 'confusables.js').read_text()
+    ok('qa6_confusables_source_pinned', 'Public/18.0.0/security/confusables.txt' in bc and '6ed3ee967c9dfdf6677d563c9985182fbc50a2efb7d6059cd57b2e2ce18f5b92' in bc and '/latest/' not in bc and '6ed3ee967c9dfdf6677d563c9985182fbc50a2efb7d6059cd57b2e2ce18f5b92' in cj and 'ꭰ -> Ꭰ -> d' in bc)
+    ok('qa6_extra_lookalikes_fold', E(pn, "M3.fold('\\u00f8\\u0275\\u0142\\u13eb\\ud83c\\uddf4')==='ooloo' && M3.normLine('one! $one point1 on3 Subscribe!')==='one one point 1 one subscribe'"))
+    ok('qa6_three_distinct_fillers_documented_limit', '3 or more *different* filler words' in (Path(__file__).resolve().parent.parent / 'README.md').read_text())
+    ok('qa6_readme_says_server_is_the_guarantee', 'The browser checks are advisory, not the guarantee' in (Path(__file__).resolve().parent.parent / 'README.md').read_text())
     import subprocess
     tracked = subprocess.run(['git', 'ls-files'], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent)).stdout
     ok('nit_no_pycache_committed', '__pycache__' not in tracked and '__pycache__' in (Path(__file__).resolve().parent.parent / '.gitignore').read_text())
