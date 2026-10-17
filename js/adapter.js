@@ -38,7 +38,7 @@
    ===================================================================== */
 (function(){
   const NS = '3x3.v1.';
-  const KEYS = ['draft','projects','jobs','connections','onboarding'];
+  const KEYS = ['draft','projects','jobs','connections','onboarding','ledger'];
   const read = (k, d) => { try { const v = localStorage.getItem(NS+k); return v ? JSON.parse(v) : d; } catch(e){ return d; } };
   const write = (k, v) => localStorage.setItem(NS+k, JSON.stringify(v));
   const uid = p => p + '_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
@@ -87,6 +87,12 @@
       Object.assign(j, patch, {updated_at:new Date().toISOString()}); write('jobs', all);
       this.emit({type:'job', job:j}); return j;
     }
+
+    /* ---- spend ledger (LOCAL ONLY demo of the $/day cap; production: server-side ledger table + the user's bot) ---- */
+    today(){ return new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Manila'}); }
+    spentToday(){ return +((read('ledger', {})[this.today()] || 0)).toFixed(2); }
+    addSpend(usd){ const l = read('ledger', {}), d = this.today(); l[d] = +(((l[d] || 0) + usd)).toFixed(2); write('ledger', {[d]: Math.max(0, l[d])}); this.emit({type:'ledger'}); }
+    resetSpend(){ write('ledger', {}); this.emit({type:'ledger'}); }
 
     /* ---- privacy ---- */
     clearAll(){ Object.keys(localStorage).filter(k => k.startsWith(NS)).forEach(k => localStorage.removeItem(k)); this.emit({type:'cleared'}); }

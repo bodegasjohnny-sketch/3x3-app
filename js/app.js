@@ -40,23 +40,31 @@
     if (r.name === 'project') html = Pages.project(r.arg);
     if (r.name === 'connections') html = Pages.connections(r.q.get('focus'));
     if (r.name === 'onboarding') html = Pages.onboarding();
+    const fk = changed ? null : App.focusKey();
     v.innerHTML = `<div class="page" id="page"><div class="wrap ${changed?'enter':''}">${html}</div></div>`;
     document.title = '3x3 · ' + r.name[0].toUpperCase() + r.name.slice(1);
     App.a11y($('#page'));
+    App.refocus(fk);
     if (changed) { $('#page').scrollTop = 0; window.scrollTo(0, 0);
       const f = r.q.get('focus'); if (f) setTimeout(() => { const el = document.getElementById('conn-' + f); el && el.scrollIntoView({block:'center', behavior:'smooth'}); }, 60);
       const s = location.hash.match(/#stage-(\w+)/); }
     else { $('#page').scrollTop = prevScroll; window.scrollTo(0, prevWin); }
   }
   App.render = route;
+  /* keep keyboard focus on the same control across re-renders (innerHTML swaps) */
+  App.focusKey = () => { const el = document.activeElement; if (!el || el === document.body) return null;
+    if (el.id) return '#' + CSS.escape(el.id);
+    for (const at of ['data-act','data-set','data-go','data-in','data-hex','data-col','data-x','data-c']) if (el.hasAttribute(at)) {
+      let q = `[${at}="${CSS.escape(el.getAttribute(at))}"]`; if (el.dataset.val != null && at !== 'data-val') q += `[data-val="${CSS.escape(el.dataset.val)}"]`; if (el.dataset.c != null && at !== 'data-c') q += `[data-c="${CSS.escape(el.dataset.c)}"]`; return q; }
+    return null; };
+  App.refocus = k => { if (!k) return; const el = document.querySelector(k); if (el && el !== document.activeElement && !el.disabled) try { el.focus({preventScroll:true}); } catch(e){} };
   App.a11y = root => { if (!root) return;
     root.querySelectorAll('.tog').forEach(t => { const locked = t.classList.contains('locked'); t.setAttribute('role','switch'); t.setAttribute('aria-checked', String(t.classList.contains('on'))); t.tabIndex = locked ? -1 : 0; if (locked) t.setAttribute('aria-disabled','true');
       if (!t.getAttribute('aria-label')) { const h = t.closest('.trow') && t.closest('.trow').querySelector('h4'); t.setAttribute('aria-label', h ? h.textContent.trim() : 'Toggle'); } });
-    root.querySelectorAll('[data-set],[data-act="plat"]').forEach(b => { b.setAttribute('aria-pressed', String(b.classList.contains('sel'))); if (b.tagName !== 'BUTTON') { b.tabIndex = 0; b.setAttribute('role','button'); } });
+    root.querySelectorAll('[data-set],[data-act="plat"]').forEach(b => { if (b.classList.contains('vcard')) return; const sel = b.classList.contains('sel') || (b.classList.contains('vsel') && !!b.closest('.vcard.sel')); b.setAttribute('aria-pressed', String(sel)); if (b.tagName !== 'BUTTON') { b.tabIndex = 0; b.setAttribute('role','button'); } });
     root.querySelectorAll('input,select,textarea').forEach(i => { if (i.type === 'hidden' || i.getAttribute('aria-label')) return; const lt = i.labels && [...i.labels].map(l => l.textContent.trim()).join(' ');
       if (!lt) i.setAttribute('aria-label', i.placeholder || (i.dataset.col ? i.dataset.col + ' colour' : i.dataset.hex ? i.dataset.hex + ' colour hex' : i.dataset.in || i.dataset.f || 'input')); });
     root.querySelectorAll('[data-go]:not(button)').forEach(e => { e.tabIndex = 0; e.setAttribute('role','button'); });
-    root.querySelectorAll('.stp').forEach(e => e.setAttribute('aria-label', 'Go to step: ' + (e.querySelector('.t') || e).textContent.trim()));
   };
   document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="switch"],[role="button"]') && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A') { e.preventDefault(); e.target.click(); } });
   let raf = 0; App.soon = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0;
@@ -91,6 +99,9 @@
       case 'force': Pipeline.retry(id, k, true); return;
       case 'swap': Pipeline.swap(id, +a.dataset.i); return;
       case 'queue': Pipeline.queue(id); return;
+      case 'age18': Pipeline.ageTick(id, a.dataset.p, a.checked); return;
+      case 'ageconfirm': Pipeline.ageConfirm(id); return;
+      case 'resetspend': Store.resetSpend(); App.toast('Simulated: new day, spend reset to $0'); Pipeline.retry(id, k); return;
       case 'download': Pipeline.download(id); return;
       case 'reset': Pipeline.reset(id); return;
       case 'delproject': if (confirm('Delete this project from this browser?')) { Store.deleteProject(id); const d = Store.getDraft(); if (d && d.projectId === id) { Intake.state.projectId = null; Store.saveDraft(Object.assign(d, {projectId:null})); } location.hash = '#/projects'; } return;

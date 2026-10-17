@@ -1,0 +1,62 @@
+{
+ "results": {
+  "xss_pron_no_alert": true,
+  "xss_import_no_alert": true,
+  "import_resets_acks": true,
+  "import_cap_clamped_20": true,
+  "import_pal_validated": true,
+  "import_crypto_bundle_reapplied": true,
+  "import_affiliate_blocked_for_crypto": true,
+  "topic_triggers_crypto": true,
+  "topic_bundle_rules": true,
+  "topic_banned_hits_block_lock": true,
+  "word_boundaries_no_false_alcohol": true,
+  "rum_still_matches": true,
+  "locks_with_clean_topic": true,
+  "topic_readonly_after_lock": true,
+  "alcohol_affiliate_blocked": true,
+  "alcohol_locks_other_goal": true,
+  "alcohol_disclaimer": "History only. For adults of legal drinking age. Drink responsibly.",
+  "alcohol_bundle_applied": true,
+  "alcohol_modes": [
+   "yt: private draft (privacyStatus=private)",
+   "fb: unpublished draft",
+   "tt: private draft (SELF_ONLY)",
+   "ig: held as a draft: not posted"
+  ],
+  "alcohol_all_private": true,
+  "alcohol_needs_you_age_gate": true,
+  "alcohol_done_after_18_confirm": true,
+  "cap_spend_le_20": true,
+  "cap_needs_you": true,
+  "axe_no_serious_critical": true,
+  "focus_kept_after_toggle": true,
+  "focus_kept_after_card_pick": true,
+  "hex_focus_ring": true,
+  "mobile_banner": {
+   "top": 0,
+   "spanVisible": true,
+   "scrollY": 2568
+  },
+  "mobile_banner_sticky_and_text": true,
+  "page_errors": "none",
+  "no_real_key_in_storage": true
+ },
+ "axe": {
+  "intake1": [],
+  "intake2": [],
+  "intake3": [],
+  "intake4": [],
+  "intake5": [],
+  "intake6": [],
+  "intake7": [],
+  "intake8": [],
+  "intake9": [],
+  "intake9-locked": [],
+  "project": [],
+  "#/projects": [],
+  "#/connections": [],
+  "#/onboarding": []
+ },
+ "errors": []
+}

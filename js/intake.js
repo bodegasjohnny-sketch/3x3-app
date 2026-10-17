@@ -96,7 +96,7 @@ let STYLES = [
    mo:'Slow push-in 3–5% per shot with gentle parallax. One move per shot, no whip pans.',cap:'Bold sans, white with highlight-word pop, soft shadow, lower-third safe zone.'},
   {id:'cinematic',n:'Cinematic',bg:'linear-gradient(#000 0 14%,transparent 14% 86%,#000 86%),radial-gradient(circle at 70% 45%,#ffb36b,transparent 35%),linear-gradient(120deg,#0b3c4a,#164e5c 50%,#a85a2a)',
    sfx:'cinematic film still, anamorphic framing, teal-and-orange grade, volumetric light, subtle 35mm grain',mo:'Slow dolly or rack focus, 1 move per shot.',cap:'Clean sans, letterbox-safe, soft fade-in.'},
-  {id:'vox',n:'Editorial collage',bg:'linear-gradient(8deg,transparent 40%,#f2c94c 40% 47%,transparent 47%),linear-gradient(-12deg,transparent 55%,rgba(30,30,30,.75) 55% 75%,transparent 75%),repeating-radial-gradient(circle at 30% 40%,#c9b99a 0 1px,transparent 1px 4px),#e8dcc4',
+  {id:'editorial_collage',n:'Editorial collage',bg:'linear-gradient(8deg,transparent 40%,#f2c94c 40% 47%,transparent 47%),linear-gradient(-12deg,transparent 55%,rgba(30,30,30,.75) 55% 75%,transparent 75%),repeating-radial-gradient(circle at 30% 40%,#c9b99a 0 1px,transparent 1px 4px),#e8dcc4',
    sfx:'editorial collage, torn paper edges, halftone cut-outs, archival photos, highlighter marks',mo:'Stop-motion jitter at 12fps; elements slide in from edges.',cap:'Marker highlight on key word, boxed labels.'},
   {id:'papercut',n:'Papercut',bg:'radial-gradient(ellipse 80% 40% at 50% 110%,#2f6b4f 60%,transparent 61%),radial-gradient(ellipse 70% 40% at 20% 100%,#4b9a6e 60%,transparent 61%),radial-gradient(ellipse 80% 45% at 80% 95%,#7cc49a 60%,transparent 61%),linear-gradient(#ffd9a8,#f6a77a)',
    sfx:'layered paper-cut diorama, soft shadows between layers, matte cardstock texture',mo:'Layer parallax with gentle sway.',cap:'Rounded font on a paper tag.'},
@@ -110,7 +110,7 @@ let STYLES = [
    sfx:'anime key visual, cel shading, vibrant sky, detailed painted background, soft rim light',mo:'Slow pan across still; speed lines on beats.',cap:'Bold outlined type with impact pop.'},
   {id:'kinetic',n:'Kinetic typography',bg:'#0d0d0d',svg:'<div style="position:absolute;inset:0;display:grid;place-items:center;font:900 24px Poppins;color:#fff;letter-spacing:-1px;line-height:.9;text-align:center">EAT<br><span style="color:#16C784">THIS</span></div>',
    sfx:'typographic poster, bold sans-serif, high contrast, minimal shapes, strict grid',mo:'Words hit on the beat: scale, slide, mask reveals.',cap:'Captions are the visual: full-screen type.'}];
-let STYLE_REC = {health:['photoreal','cinematic'],animals:['photoreal','clay'],faith:['cinematic','kinetic'],science:['cinematic','vox'],history:['vox','papercut'],money:['kinetic','whiteboard'],tech:['kinetic','cinematic']};
+let STYLE_REC = {health:['photoreal','cinematic'],animals:['photoreal','clay'],faith:['cinematic','kinetic'],science:['cinematic','editorial_collage'],history:['editorial_collage','papercut'],money:['kinetic','whiteboard'],tech:['kinetic','cinematic']};
 const VOICES = [
   {id:'adam',n:'Adam',r:'deep narrator',d:'Documentary, authoritative',t:'US · Male'},
   {id:'rachel',n:'Rachel',r:'warm',d:'Calm, friendly explainer',t:'US · Female'},
@@ -191,7 +191,32 @@ const S = {step:1,max:1,goal:REAL?'fb_monetization':'facebook',niche:REAL?'healt
   acc:true,locked:false,locking:false,topic:0,
   vo:true,aiAck:false,aiTag:true,kids:false,noClaims:false,ownTopic:'',ackErr:false,projectId:null,compAck:false,version:1,versions:[],cap:20};
 const S_DEFAULT = JSON.parse(JSON.stringify(S));
-(function(){ const d=window.Store&&Store.getDraft(); if(d&&REAL&&RD.renamed&&RD.renamed[d.style]) d.style=RD.renamed[d.style]; if(d&&d.goal&&GOALS.find(g=>g.id===d.goal)) Object.assign(S,d,{locking:false,playing:null,ackErr:false}); else S.playing=null; })();
+/* Validate anything that comes from outside (Import JSON, or a tampered localStorage draft): enums, hex colours, numbers, string lengths.
+   Acknowledgements are never trusted from a file. Forced bundles and the cap are re-applied after. */
+const HEX=/^#[0-9a-f]{6}$/i, str=(v,n=120)=>typeof v==='string'?v.replace(/[\u0000-\u001f]/g,'').slice(0,n):null;
+function sanitizeIntake(I, opts={}){ const o={}, D=S_DEFAULT, inList=(v,l)=>l.includes(v)?v:undefined;
+  o.goal=inList(I.goal,GOALS.map(g=>g.id)); o.niche=inList(I.niche,NICHES.map(n=>n.id));
+  const nn=N(o.niche||D.niche); o.sub=inList(I.sub,nn.subs.map(x=>x[0]))||(o.niche?nn.subs[0][0]:undefined);
+  o.format=inList(I.format,FORMATS.map(f=>f.id)); o.aspect=inList(I.aspect,ASPECTS.map(a=>a.id));
+  if(Number.isFinite(+I.dur)) o.dur=Math.max(10,Math.min(180,Math.round(+I.dur)));
+  if(I.style&&REAL&&RD.renamed&&RD.renamed[I.style]) I.style=RD.renamed[I.style];
+  o.style=inList(I.style,STYLES.map(x=>x.id)); o.voice=inList(I.voice,VOICES.map(v=>v.id));
+  o.lang=str(I.lang,40)||undefined; o.energy=inList(I.energy,['Calm','Warm','Hype']); if(Number.isFinite(+I.pace)) o.pace=Math.max(0.7,Math.min(1.3,+I.pace));
+  if(Array.isArray(I.pron)) o.pron=I.pron.filter(x=>Array.isArray(x)&&typeof x[0]==='string'&&typeof x[1]==='string').slice(0,40).map(([w,q])=>[str(w,40),str(q,60)]);
+  ['name','handle','cta','end'].forEach(k=>{ const v=str(I[k],k==='end'||k==='cta'?140:60); if(v!==null) o[k]=v; });
+  if(I.pal&&typeof I.pal==='object'){ o.pal={}; Object.keys(D.pal).forEach(k=>o.pal[k]=HEX.test(I.pal[k])?I.pal[k].toUpperCase():D.pal[k]); }
+  o.fh=inList(I.fh,FONTS); o.fb=inList(I.fb,FONTS); o.capStyle=inList(I.capStyle,CAPSTY.map(c=>c.id)); o.capPos=inList(I.capPos,CAPPOS.map(c=>c.id));
+  o.music=inList(I.music,MUSIC); o.sfx=inList(I.sfx,['Low','Med','High']);
+  if(Array.isArray(I.banned)) o.banned=I.banned.map(w=>str(w,40)).filter(Boolean).map(w=>w.toLowerCase()).slice(0,60);
+  if(I.plat&&typeof I.plat==='object'){ o.plat={}; PLATS.forEach(x=>o.plat[x.id]=I.plat[x.id]===true); }
+  ['counter','vo','aiTag','kids','noClaims','disclaimer'].forEach(k=>{ if(typeof I[k]==='boolean') o[k]=I[k]; });
+  o.ownTopic=str(I.ownTopic,160)||''; o.topic=I.topic===-1?-1:(Number.isInteger(I.topic)&&I.topic>=0&&I.topic<5?I.topic:0);
+  o.cap=Math.max(1,Math.min(M3.CAP_MAX,Math.round(+I.cap||M3.CAP_MAX)));
+  Object.keys(o).forEach(k=>o[k]===undefined&&delete o[k]);
+  if(opts.keepState){ ['step','max','acc','locked','projectId','version','versions','aiAck','compAck'].forEach(k=>{ if(I[k]!==undefined) o[k]=I[k]; });
+    o.step=Math.max(1,Math.min(9,+o.step||1)); o.max=Math.max(1,Math.min(9,+o.max||1)); o.version=Math.max(1,+o.version||1); o.aiAck=o.aiAck===true; o.compAck=o.compAck===true; o.locked=o.locked===true; if(!Array.isArray(o.versions)) o.versions=[]; }
+  else { o.aiAck=false; o.compAck=false; }
+  return o; }
 const TRANSIENT=['locking','playing','ackErr'];
 function saveDraft(){ if(!window.Store) return; const o={}; Object.keys(S).forEach(k=>{ if(!TRANSIENT.includes(k)) o[k]=S[k]; }); Store.saveDraft(o); const el=document.querySelector('.saved'); if(el){ el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); el.lastChild.textContent=' Autosaved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }
 const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic','cap'];
@@ -201,7 +226,8 @@ const isRealistic=()=>REALISTIC.includes(S.style);
 const affOn=()=>S.goal==='affiliate';
 const claimsOn=()=>M3.needsNoClaims(S)||S.noClaims||(typeof bundleList==='function'&&bundleList().some(b=>b.banned_claims&&b.banned_claims.length));
 const BUNDLES=(REAL&&RD.bundles)||{};
-const bundleIds=()=>{ const sb=curSub(); const b=(sb&&sb.bundles)?sb.bundles.slice():[]; if(!REAL&&S.niche==='kids_learning') b.push('kids'); return b; };
+const bundleIds=()=>{ const sb=curSub(); const b=(sb&&sb.bundles)?sb.bundles.slice():[]; if(!REAL&&S.niche==='kids_learning') b.push('kids'); M3.topicBundles(M3.topicText(S)).forEach(x=>{ if(!b.includes(x)&&(BUNDLES[x]||!REAL)) b.push(x); }); return b; };
+const topicHits=()=>S.topic===-1?M3.bannedHits(S.ownTopic,[...new Set(S.banned.concat(forcedWords()))]):[];
 const bundleList=()=>bundleIds().map(id=>Object.assign({id},BUNDLES[id]||{})).filter(b=>b.forced!==false);
 const hasBundle=id=>bundleIds().includes(id);
 const forcedDisc=()=>{ const b=bundleList().filter(x=>x.disclaimer&&x.disclaimer.required); return b.find(x=>x.id==='crypto')||b.find(x=>x.id==='finance')||b[0]||null; };
@@ -232,7 +258,7 @@ function stepValue(i){ return [
 /* ---------- shell ---------- */
 function rail(){
   return `<h6>Intake</h6><ol class="steps">${STEPS.map((s,i)=>{const n=i+1,cl=n===S.step?'on':(n<S.step||(S.locked&&n===9)?'done':(n<=S.max?'done':'future'));
-    return `<li class="stp ${cl}" data-go="${n}"><div class="dot">${cl==='done'?ic('check'):n}</div><div style="min-width:0"><div class="t">${s.t}</div><div class="v">${n<=S.max?esc(stepValue(i)):'Not started'}</div></div></li>`}).join('')}</ol>
+    return `<li><button type="button" class="stp ${cl}" data-go="${n}" ${n===S.step?'aria-current="step"':''}><span class="dot">${cl==='done'?ic('check'):n}</span><span style="min-width:0;display:block"><span class="t" style="display:block">${s.t}</span><span class="v" style="display:block">${n<=S.max?esc(stepValue(i)):'Not started'}</span></span></button></li>`}).join('')}</ol>
     <div class="rail-foot"><div class="bar"><i style="width:${pct()}%"></i></div><p><span>Step ${S.step} of 9</span><span>${pct()}%</span></p></div>`;
 }
 function mobSteps(){ return STEPS.map((s,i)=>{const n=i+1;return `<button data-go="${n}" class="${n===S.step?'on':(n<=S.max?'done':'')}"><i>${n<S.step?'✓':n}</i>${s.t}</button>`}).join(''); }
@@ -259,7 +285,7 @@ function summary(){
 function footer(){
   const last=S.step===9;
   return `<button class="btn ghost" data-go="${S.step-1}" ${S.step===1?'disabled':''}>${ic('al')}Back</button>
-    <div class="sp">${last?(S.locked?'Intake locked. Pick a topic, then create the project.':(!S.aiAck?'Confirm AI disclosure in step 8 before locking.':!S.compAck?'Tick the compliance check to lock.':'Review everything, then lock to generate global rules.')):(S.step===8&&!S.aiAck?'<span style="color:#ffb1b5">Confirm AI disclosure to continue</span>':`Next: ${STEPS[S.step].t}`)}</div>
+    <div class="sp">${last?(S.locked?'Intake locked. Create the project to start.':(!S.aiAck?'Confirm AI disclosure in step 8 before locking.':!S.compAck?'Tick the compliance check to lock.':'Review everything, then lock to generate global rules.')):(S.step===8&&!S.aiAck?'<span style="color:#ffb1b5">Confirm AI disclosure to continue</span>':`Next: ${STEPS[S.step].t}`)}</div>
     ${last?(S.locked?`<button class="btn pri" data-act="create">${S.projectId?'Open project':'Create project'} ${ic('ar')}</button>`:`<button class="btn pri" data-act="lock" ${canLock()?'':'disabled'}>${ic('lock')}Lock v${S.version}</button>`)
       :`<button class="btn pri" data-go="${S.step+1}">Continue ${ic('ar')}</button>`}`;
 }
@@ -324,8 +350,8 @@ const VIEWS = {
   <div class="${S.vo?'':'dimmed'}" style="display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:16px;align-items:start">
    <div class="grid" style="gap:10px">${VOICES.map((v,vi)=>{const on=S.playing===v.id;
      return `<div class="card vcard st ${S.voice===v.id?'sel':''}" data-set="voice" data-val="${v.id}">
-       <button class="play ${on?'on':''}" data-act="play" data-val="${v.id}">${ic(on?'pause':'play')}</button>
-       <div class="vmeta"><h3>${v.n} <span style="color:var(--mute);font-weight:500">– ${v.r}</span></h3><p>${v.d}</p></div>
+       <button class="play ${on?'on':''}" data-act="play" data-val="${v.id}" aria-label="${on?'Stop':'Play'} ${v.n} preview">${ic(on?'pause':'play')}</button>
+       <div class="vmeta"><h3><button type="button" class="vsel" data-set="voice" data-val="${v.id}">${v.n} <span style="color:var(--mute);font-weight:500">– ${v.r}</span></button></h3><p>${v.d}</p></div>
        <div class="wave ${on?'on':''}">${Array.from({length:18},(_,j)=>{const h=20+Math.abs(Math.sin(j*1.7+vi*3))*70+(j%4)*3;return `<i style="--h:${Math.min(h,100)}%;--d:${(j%7)*-0.13}s;--s:${(0.4+((j*37)%60)/100).toFixed(2)}"></i>`}).join('')}</div>
        <span class="vtag">${v.t}</span>${S.voice===v.id?`<span class="chk">${ic('check')}</span>`:''}</div>`}).join('')}</div>
    <div class="grid" style="gap:14px">
@@ -335,18 +361,18 @@ const VIEWS = {
        <div class="row" style="justify-content:space-between;font-size:11px;color:var(--dim);margin-top:4px"><span>0.8× slower</span><span>155 wpm</span><span>1.25× faster</span></div>
        <div class="lbl">Energy</div><div class="chips">${['Calm','Warm','Hype'].map(e=>`<button class="chip ${S.energy===e?'sel':''}" data-set="energy" data-val="${e}">${e}</button>`).join('')}</div></div>
      <div class="panel st"><div class="lbl" style="margin-top:0">Pronunciation list <span class="r" style="color:var(--dim)">${S.pron.length} words</span></div>
-       <div class="pron">${S.pron.map(([w,p],i)=>`<div class="prow"><span>${w}</span>${ic('ar')}<span class="ph">${p}</span><button data-act="delpron" data-val="${i}" style="color:var(--dim)">${ic('x')}</button></div>`).join('')}
-       <div class="row" style="gap:6px;margin-top:4px"><input class="inp" id="pw" placeholder="word" style="padding:8px 10px"><input class="inp" id="pp" placeholder="say it like…" style="padding:8px 10px"><button class="btn" data-act="addpron" style="padding:8px 10px">${ic('plus')}</button></div></div></div>
+       <div class="pron">${S.pron.map(([w,p],i)=>`<div class="prow"><span>${esc(w)}</span>${ic('ar')}<span class="ph">${esc(p)}</span><button data-act="delpron" data-val="${i}" style="color:var(--dim)" aria-label="Remove ${esc(w)}">${ic('x')}</button></div>`).join('')}
+       <div class="row" style="gap:6px;margin-top:4px"><input class="inp" id="pw" placeholder="word" style="padding:8px 10px"><input class="inp" id="pp" placeholder="say it like…" style="padding:8px 10px"><button class="btn" data-act="addpron" style="padding:8px 10px" aria-label="Add pronunciation">${ic('plus')}</button></div></div></div>
    </div></div>`; },
 6(){ return sh('Brand kit','Everything here is burned into every video. Preview updates live.')+
   `<div class="brandgrid"><div>
     <div class="f2 st"><label class="field"><span>Brand name</span><input class="inp" data-in="name" value="${esc(S.name)}"></label>
       <label class="field"><span>Handle</span><input class="inp" data-in="handle" value="${esc(S.handle)}"></label></div>
     <div class="f2 st" style="margin-top:12px">
-      <div class="drop has"><div class="dz" style="background:${S.pal.hl};color:${onHl()}">${ic('leaf')}</div><div style="min-width:0"><b>healthybites-logo.png</b><small>512×512 · transparent · <a style="color:var(--cyan)">Replace</a></small></div></div>
+      <div class="drop has"><div class="dz" style="background:${hx(S.pal.hl)};color:${onHl()}">${ic('leaf')}</div><div style="min-width:0"><b>healthybites-logo.png</b><small>512×512 · transparent · <a style="color:var(--cyan)">Replace</a></small></div></div>
       <div class="drop"><div class="dz">${ic('up')}</div><div><b>Frame overlay</b><small>Drop PNG 1080×1920 (optional)</small></div></div></div>
     <div class="lbl st">Palette · 5 roles</div>
-    <div class="pal st">${ROLES.map(([k,l])=>`<div class="sw"><label style="background:${S.pal[k]}" data-sw="${k}"><input type="color" value="${S.pal[k]}" data-col="${k}"></label><span>${l}</span><input class="hex" value="${S.pal[k]}" data-hex="${k}" maxlength="7"></div>`).join('')}</div>
+    <div class="pal st">${ROLES.map(([k,l])=>`<div class="sw"><label style="background:${hx(S.pal[k])}" data-sw="${k}"><input type="color" value="${hx(S.pal[k])}" data-col="${k}" aria-label="${l} colour"></label><span>${l}</span><input class="hex" value="${hx(S.pal[k])}" data-hex="${k}" maxlength="7" aria-label="${l} colour hex"></div>`).join('')}</div>
     <div class="st" id="contrastBox">${contrastBox()}</div>
     <div class="lbl st">Typography & text</div>
     <div class="f2 st"><label class="field"><span>Heading font</span><select class="inp" data-in="fh">${FONTS.map(f=>`<option ${f===S.fh?'selected':''}>${f}</option>`).join('')}</select></label>
@@ -374,7 +400,7 @@ const VIEWS = {
 8(){ return sh('Safety & platforms','Guardrails every script must pass, and where you plan to publish.')+bundleBanner()+
   `<div class="panel st"><div class="lbl" style="margin-top:0">${ic('shield')}Banned words ${M3.BANNED_PRESET[S.niche]?`<span class="badge grn" style="text-transform:none;letter-spacing:0">Prefilled for ${esc(N(S.niche).n)}</span>`:''}<span class="r" style="color:var(--dim)">Scripts using these are rewritten</span></div>
     <div class="chips">${S.banned.map((w,i)=>forcedWords().includes(w)?`<span class="chip word forced" title="Forced by the ${esc(bundleList().map(b=>b.name).join(' / '))} rule bundle">${ic('lock')}${esc(w)}</span>`:`<span class="chip word">${esc(w)}<button class="x" data-act="delword" data-val="${i}" aria-label="Remove ${esc(w)}">${ic('x')}</button></span>`).join('')}
-      <span class="addin"><input id="bw" placeholder="Add a word…"><button class="btn" data-act="addword" style="padding:4px 8px;border-radius:99px">${ic('plus')}</button></span></div>
+      <span class="addin"><input id="bw" placeholder="Add a word…"><button class="btn" data-act="addword" style="padding:4px 8px;border-radius:99px" aria-label="Add banned word">${ic('plus')}</button></span></div>
     <div class="row" style="margin-top:10px;gap:6px;font-size:12px;color:var(--dim)">Suggested: ${suggestWords().filter(w=>!S.banned.includes(w)).map(w=>`<button class="chip ghost" style="padding:3px 10px;font-size:12px" data-act="sugword" data-val="${w}">+ ${w}</button>`).join('')}</div></div>
   <div class="grid g2" style="margin-top:12px">
     <div class="trow st" style="flex-wrap:wrap"><div class="tx"><h4>${forcedDisc()&&forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer (not financial advice)':'Disclaimer'}</h4><p>Shown on the first frame and in the description</p></div><div class="tog ${discOn()?'on':''} ${highRisk()?'locked':''}" ${highRisk()?'aria-disabled="true" title="Always on for high-risk niches"':'data-act="tog" data-val="disclaimer"'}></div>
@@ -392,15 +418,11 @@ const VIEWS = {
     ['Captions',`${capN()} · ${posN()}`,`Counter ${S.counter?'on':'off'}${affOn()?' · affiliate line on':''}`,7],['Audio',`${S.music} · SFX ${S.sfx}`,'−14 LUFS',7],
     ['Safety',`${S.banned.length} banned · sources on${claimsOn()?' · no-claims':''}`,`${S.kids?'Made for kids · ':''}${platList().join(', ')}`,8],
     ['AI disclosure',S.aiAck?'Confirmed · required':'Not confirmed',aiPlatSummary(),8]];
-  if(S.locked) return sh('Intake locked','Global rules are built. Pick a first topic, then create the project.')+
+  if(S.locked) return sh('Intake locked','Global rules are built for this topic. Create the project to start.')+
     `<div class="okbanner st"><div class="lk">${ic('lock')}</div><div style="flex:1"><h3>Rules v${S.version} built from your intake · v${S.version} is read-only</h3><p>${items.slice(0,6).map(i=>esc(i[1])).join(' · ')}</p><p class="mono" style="margin-top:4px">intake hash ${M3.hash(intakeSnapshot())}</p></div><button class="btn ghost" data-act="newversion">${ic('edit')}Edit as v${S.version+1}</button></div>
     ${versionsList()}
     ${reviewWarnings()}
-    <div class="lbl st">${ic('spark')}Suggested topics · ${esc(subName())} <span class="r">${REAL?`<span class="badge grn">From research topic seeds</span>`:`<span class="badge warn">Example data, research pending</span>`}</span></div>
-    <div class="grid g3">${topics().map((t,i)=>`<button class="card topic st ${S.topic===i?'sel':''}" data-set="topic" data-val="${i}">${chk(S.topic===i)}<div class="no">TOPIC ${i+1}</div><h3>${esc(t.t)}</h3>${t.h?`<p>${t.h}</p>`:''}
-      <div class="meta">${t.s?`<span class="badge grn">Fit ${t.s}</span>`:''}<span class="badge mute">${F().n}</span><span class="badge mute">${S.dur}s</span><span class="badge mute">${S.aspect}</span></div></button>`).join('')}
-      <div class="card topic st ${S.topic===-1?'sel':''}" style="border-style:dashed;background:transparent">${chk(S.topic===-1)}<div class="no">YOUR OWN</div><h3 style="color:var(--mute)">Write my own topic</h3>
-        <input class="inp" id="ownT" data-in="ownTopic" placeholder="e.g. 5 fruits with more fibre than oats" value="${esc(S.ownTopic)}" style="margin-top:8px"></div></div>
+    ${topicSection(true)}
     <div class="next st"><div class="n">${ic('edit')}</div><div><b>Next: Script (approval 1)</b><p>Creates a project and sends the first jobs to your Grok Bot worker (simulated in this test build): Rules, then a ${S.dur}s script for "${esc(curTopic())}". You approve it before any voice or visuals are made.</p></div><button class="btn pri" data-act="create">${S.projectId?'Open project':'Create project & start'} ${ic('ar')}</button></div>`;
   return sh('Review & lock','Check every choice. Locking turns them into global rules every video follows.',`<div class="row" style="gap:8px"><button class="btn ghost" data-act="export">${ic('dl')}Export JSON</button><label class="btn ghost" style="cursor:pointer">${ic('up')}Import JSON<input type="file" accept="application/json,.json" id="impFile" hidden></label></div>`)+
   `${blockedGoal()?`<div class="errbanner st">${ic('warn')}<div><b>${esc(G(S.goal).n)} isn't allowed for ${esc(subName())}.</b> The ${esc(blockedGoal().name)} bundle blocks this goal (no exchange or token referral links). <a data-go="1">Change goal →</a> or <a data-go="2">change niche →</a></div></div>`:''}
@@ -409,10 +431,11 @@ const VIEWS = {
   <div class="grid g3">${items.map(([k,v,s,n])=>`<div class="card rv st"><div class="k">${k}<a data-go="${n}">${ic('edit')}Edit</a></div><div class="val">${esc(v)}</div><div class="sub">${esc(s)}</div></div>`).join('')}</div>
   ${costEstimate()}
   ${versionsList()}
+  ${topicSection(false)}
   <label class="ack st ${S.compAck?'on':''}" style="margin-top:14px"><input type="checkbox" data-act="compack" ${S.compAck?'checked':''} aria-describedby="compackd"><span id="compackd"><b>Compliance check (required).</b> I confirm these videos follow each platform's rules and local law: claims will be sourced, ${affOn()?'the affiliate disclosure stays on, ':''}AI labels stay on${highRisk()?', the disclaimer stays on for this high-risk niche':''}, and I'll review every approval step before anything is published.</span></label>
   <div class="acc st ${S.acc?'open':''}"><button data-act="acc">${ic('bolt')}Generated global rules preview <span class="badge mute">rules v1 · compiled from this intake</span><span class="cv">${ic('cr')}</span></button>
-    <div class="accb"><div><pre class="json">${rulesJSON()}</pre></div></div></div>
-  <button class="lockbtn st ${S.locking?'locking':''}" data-act="lock" ${canLock()?'':'disabled'}>${ic('lock')}${S.locking?'Locking intake…':(!S.aiAck?'Confirm AI disclosure first (step 8)':!S.compAck?'Tick the compliance check to lock':`Lock intake v${S.version} & build rules`)}</button>`; }
+    <div class="accb"><div><pre class="json" tabindex="0" role="region" aria-label="Generated global rules JSON">${rulesJSON()}</pre></div></div></div>
+  <button class="lockbtn st ${S.locking?'locking':''}" data-act="lock" ${canLock()?'':'disabled'}>${ic('lock')}${S.locking?'Locking intake…':(!S.aiAck?'Confirm AI disclosure first (step 8)':blockedGoal()?'Goal not allowed for this niche':topicHits().length?'Remove banned words from your topic':(S.topic===-1&&!S.ownTopic.trim())?'Write your topic or pick one':!S.compAck?'Tick the compliance check to lock':`Lock intake v${S.version} & build rules`)}</button>`; }
 };
 
 function phoneScene(){ return `<div><div class="phone"><div class="notch"></div><div class="scene"></div>
@@ -460,16 +483,26 @@ function step8Extra(){ const plats=Object.keys(S.plat).filter(k=>S.plat[k]); con
     <div class="trow st" style="align-items:flex-start;flex-wrap:wrap"><div class="tx"><h4>${ic('kid')} Made for kids</h4><p>YouTube COPPA setting. When on, comments and personalised ads are off, and the script avoids anything not suitable for under-13s.${S.niche==='kids_learning'&&!S.kids?' <b style="color:#ffcf7a">Recommended for Kids & learning.</b>':''}</p></div><div class="tog ${S.kids||kidsForced()?'on':''} ${kidsForced()?'locked':''}" ${kidsForced()?'aria-disabled="true"':'data-act="tog" data-val="kids"'}></div>
       ${kidsForced()?`<p style="flex-basis:100%;font-size:11.5px;color:var(--mute);margin-top:6px">${ic('lock')} Forced by the Made for kids (COPPA) bundle. ${esc((BUNDLES.kids||{}).platform_note||'Kids projects publish to YouTube only.')}</p>`:''}</div>
   </div>`; }
+const hx=v=>HEX.test(v||'')?v:'#000000';
 function lum(h){ const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(x=>x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4)); return .2126*c[0]+.7152*c[1]+.0722*c[2]; }
 function cr(a,b){ try{ const x=lum(a),y=lum(b); return (Math.max(x,y)+.05)/(Math.min(x,y)+.05); }catch(e){ return 1; } }
 function onHl(){ return cr('#0B0F1A',S.pal.hl)>=cr('#FFFFFF',S.pal.hl)?'#0B0F1A':'#FFFFFF'; }
-function contrastBox(){ const P=S.pal, rows=[['Text on background',P.text,P.bg],['Highlight word on background',P.hl,P.bg],['Accent on background',P.accent,P.bg],['Pill text on highlight (auto)',onHl(),P.hl]];
+function contrastBox(){ const P=Object.fromEntries(Object.entries(S.pal).map(([k,v])=>[k,hx(v)])), rows=[['Text on background',P.text,P.bg],['Highlight word on background',P.hl,P.bg],['Accent on background',P.accent,P.bg],['Pill text on highlight (auto)',onHl(),P.hl]];
   const wt=cr('#FFFFFF',P.hl);
-  return `<div class="lbl">Contrast check <span class="r" style="color:var(--dim)">WCAG AA needs 4.5:1</span></div><div class="contrast">${rows.map(([n,f,b])=>{const r=cr(f,b);return `<div class="crow ${r>=4.5?'pass':'fail'}"><span class="sw2" style="color:${f};background:${b}">Aa</span><span>${n}</span><b>${r.toFixed(2)}:1 ${r>=4.5?'✓':'✗ too low'}</b></div>`}).join('')}
-   ${wt<4.5?`<div class="crow fail"><span class="sw2" style="color:#fff;background:${P.hl}">Aa</span><span>White text on highlight is blocked</span><b>${wt.toFixed(2)}:1</b></div>`:''}</div>`; }
+  return `<div class="lbl">Contrast check <span class="r" style="color:var(--dim)">WCAG AA needs 4.5:1</span></div><div class="contrast">${rows.map(([n,f,b])=>{const r=cr(f,b);return `<div class="crow ${r>=4.5?'pass':'fail'}"><span class="sw2" style="color:${hx(f)};background:${hx(b)}" data-t="Aa" role="img" aria-label="Sample"></span><span>${n}</span><b>${r.toFixed(2)}:1 ${r>=4.5?'✓':'✗ too low'}</b></div>`}).join('')}
+   ${wt<4.5?`<div class="crow fail"><span class="sw2" style="color:#fff;background:${P.hl}" data-t="Aa" role="img" aria-label="Blocked sample: white on highlight"></span><span>White text on highlight is blocked</span><b>${wt.toFixed(2)}:1</b></div>`:''}</div>`; }
 function bundleBanner(){ const bl=bundleList(); if(!bl.length) return ''; return `<div class="infobox st" style="background:rgba(139,92,246,.07);border-color:rgba(139,92,246,.35)">${ic('lock')}<div><b>Forced rule bundle${bl.length>1?'s':''}: ${esc(bl.map(b=>b.name).join(' · '))}</b><br>These settings are locked for ${esc(subName())}: ${[forcedDisc()?(forcedDisc().disclaimer.type==='NFA'?'NFA disclaimer':'disclaimer'):'', claimsOn()?'no-claims rules':'', kidsForced()?'made for kids + YouTube only':'', forcedWords().length?forcedWords().length+' banned words':''].filter(Boolean).join(' · ')}.${blockedGoal()?` <b style="color:#ffb1b5">Your goal (${esc(G(S.goal).n)}) is blocked for this niche.</b>`:''}</div></div>`; }
 function alcoholWarn(){ if(!M3.isAlcohol(S)) return ''; return `<div class="errbanner st" style="margin-top:12px;background:rgba(255,176,32,.08);border-color:rgba(255,176,32,.5)">${ic('warn')}<div><b>Alcohol niche: never auto-published.</b> ${esc(M3.ALCOHOL_YT)}${S.plat.yt?'':' (YouTube isn\'t selected right now.)'}</div></div>`; }
-function canLock(){ return S.aiAck&&S.compAck&&!blockedGoal(); }
+function topicSection(ro){ const hits=topicHits(), tb=M3.topicBundles(M3.topicText(S));
+  return `<div class="lbl st">${ic('spark')}Suggested topics · ${esc(subName())} <span class="r">${REAL?`<span class="badge grn">From research topic seeds</span>`:`<span class="badge warn">Example data, research pending</span>`}</span></div>
+    <div class="grid g3">${topics().map((t,i)=>`<button class="card topic st ${S.topic===i?'sel':''}" data-set="topic" data-val="${i}" ${ro?'disabled':''}>${chk(S.topic===i)}<div class="no">TOPIC ${i+1}</div><h3>${esc(t.t)}</h3>${t.h?`<p>${t.h}</p>`:''}
+      <div class="meta">${t.s?`<span class="badge grn">Fit ${t.s}</span>`:''}<span class="badge mute">${F().n}</span><span class="badge mute">${S.dur}s</span><span class="badge mute">${S.aspect}</span></div></button>`).join('')}
+      <div class="card topic st ${S.topic===-1?'sel':''}" style="border-style:dashed;background:transparent">${chk(S.topic===-1)}<div class="no">YOUR OWN</div><h3 style="color:var(--mute)">Write my own topic</h3>
+        <input class="inp" id="ownT" data-in="ownTopic" maxlength="160" aria-label="Your own topic" placeholder="e.g. 5 fruits with more fibre than oats" value="${esc(S.ownTopic)}" style="margin-top:8px" ${ro?'readonly aria-readonly="true"':''}></div></div>
+    ${ro?`<p class="muted st" style="margin-top:6px">${ic('lock')} The topic is part of locked v${S.version}. To change it, use "Edit as v${S.version+1}".</p>`:''}
+    ${hits.length?`<div class="errbanner st" style="margin-top:10px">${ic('warn')}<div><b>Your topic uses banned words: ${hits.map(esc).join(', ')}.</b> Reword it before you lock.</div></div>`:''}
+    ${tb.length?`<div class="infobox st" style="margin-top:10px">${ic('lock')}<div>Your topic triggers the <b>${tb.map(x=>esc((BUNDLES[x]||{name:x}).name||x)).join(' · ')}</b> rule bundle${tb.length>1?'s':''}. Their forced settings now apply.</div></div>`:''}`; }
+function canLock(){ return S.aiAck&&S.compAck&&!blockedGoal()&&!topicHits().length&&!(S.topic===-1&&!S.ownTopic.trim()); }
 function versionsList(){ if(!S.versions||!S.versions.length) return ''; return `<div class="verlist st"><span class="muted" style="align-self:center">Locked versions (read-only):</span>${S.versions.slice().sort((a,b)=>a.v-b.v).map(v=>`<button class="badge ${v.v===S.version&&S.locked?'grn':'mute'}" data-act="viewver" data-val="${v.v}" title="Open read-only JSON">${ic('lock')}v${v.v} · ${new Date(v.locked_at).toLocaleDateString([], {month:'short',day:'numeric'})} · ${v.intake_hash.slice(0,8)}</button>`).join('')}</div>`; }
 function curTopic(){ return S.topic===-1?(S.ownTopic||'Your own topic'):(topics()[S.topic]||topics()[0]).t; }
 function reviewWarnings(){ const ws=M3.warnings(intakeSnapshot(), Store.getConnections()); if(!ws.length) return `<div class="okline st">${ic('check')}All connections this intake needs are ready.</div>`;
@@ -481,10 +514,10 @@ function costEstimate(){ const w=words(S.dur), ch=Math.round(w*5.8), n=shots(S.d
    <div class="stat g"><b>~${n+sw}<small>images</small></b><span>Grok Imagine stills: ${n} shots + ~${sw} swaps</span></div>
    <div class="stat"><b>~${n}<small>clips</small></b><span>Grok Imagine image→video, one per still</span></div>
    <div class="stat"><b>${S.dur}s</b><span>Final length · −14 LUFS</span></div></div>
-   <div class="caprow"><label class="field" style="max-width:220px"><span>Daily spend cap per user (USD)</span><input class="inp" type="number" min="1" max="500" step="1" data-in="cap" value="${S.cap}"></label><p class="muted">Default is <b>$20/day</b>. Your Grok Bot pauses new jobs once the day's estimated xAI + ElevenLabs spend reaches the cap, and the step shows "Needs you".</p></div>
+   <div class="caprow"><label class="field" style="max-width:220px"><span>Daily spend cap per user (USD)</span><input class="inp" type="number" min="1" max="${M3.CAP_MAX}" step="1" data-in="cap" value="${+S.cap||M3.CAP_MAX}"></label><p class="muted">Default and maximum is <b>$20/day</b> (estimated, about $${M3.videoCost(S)} per video). The test build pauses new jobs at the cap with "Needs you" (simulated); in production the cap is enforced server-side and by your bot.</p></div>
    <p class="muted" style="margin-top:8px">Grok Imagine runs on the xAI API, which bills per generation and has rate limits. Check current pricing on your own xAI and ElevenLabs plans. Re-runs and swaps add to these numbers.</p></div>`; }
 function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S.plat).filter(k=>S.plat[k]);
-  return {rule_set_version:S.version,intake_version:S.version, intake_hash:M3.hash(intakeSnapshot()), goal:{id:S.goal,name:g.full||g.n,cta:S.cta},
+  return {rule_set_version:(REAL&&RD.rules.rule_set_version)||'1.2',intake_version:S.version, intake_hash:M3.hash(intakeSnapshot()), goal:{id:S.goal,name:g.full||g.n,cta:S.cta},
     niche:{category:S.niche,sub:S.sub,compliance:sb.risk||null}, topic:curTopic(),
     format:{type:S.format,duration_s:S.dur,aspect:S.aspect,word_budget:words(S.dur),wpm:155,shot_count:shots(S.dur),max_shot_s:2.5},
     canvas:{width:S.aspect==='16:9'?1920:1080,height:S.aspect==='9:16'?1920:1080,safe_zone_px:{top:250,bottom:400},note:'No captions, labels or key subjects inside the safe zones'},
@@ -494,17 +527,20 @@ function compileRules(){ const sb=curSub()||{}, g=G(S.goal), plats=Object.keys(S
     brand:{name:S.name,handle:S.handle,palette:S.pal,fonts:[S.fh,S.fb],end_card:S.end},
     captions:{style:S.capStyle,position:S.capPos,counter:S.counter,on_every_frame:true,safe_zone_px:{top:250,bottom:400},affiliate_line:affOn()?M3.AFFILIATE_LINE:null},
     audio:{music:S.music,sfx:S.sfx.toLowerCase(),lufs:-14,true_peak_db:-1},
-    rule_bundles_applied:bundleIds(), safety:{banned_words:S.banned,no_claims:claimsOn()?claimRules():false,disclaimer:discOn()?{text:disclaimerText(),locked:highRisk()}:false,cite_sources:true,made_for_kids:S.kids||kidsForced(), made_for_kids_forced:kidsForced()},
+    rule_bundles_applied:bundleIds(), bundle_rules:Object.fromEntries(bundleList().map(b=>[b.id,Object.fromEntries(['visual_rules','subject_rules','pii','sources','age_gate','cta','affiliate'].filter(f=>b[f]).map(f=>[f,b[f]]).concat(b.publishing?[['auto_publish',b.publishing.auto_publish!==false]]:[]))])), generation_routing:{route:'xai_api',browser_routing_allowed:false}, safety:{banned_words:S.banned,no_claims:claimsOn()?claimRules():false,disclaimer:discOn()?{text:disclaimerText(),locked:highRisk()}:false,cite_sources:true,made_for_kids:S.kids||kidsForced(), made_for_kids_forced:kidsForced()},
     ai_disclosure:{required:true,acknowledged:S.aiAck,on_screen_tag:S.aiTag||isRealistic(),photoreal:isRealistic(),platforms:Object.fromEntries(plats.map(k=>[k,M3.AI_DISCLOSURE[k].label]))},
     affiliate_disclosure:affOn()?{required:true,on_screen:true,in_description:true,text:M3.AFFILIATE_LINE}:null,
-    budget:{daily_cap_usd:+S.cap||20,enforced_by:'user Grok Bot (pauses jobs at cap)'}, tiktok:S.plat.tt?{duration_s:S.dur,creator_rewards_eligible:S.dur>60}:null,
+    budget:{daily_cap_usd:Math.min(M3.CAP_MAX,+S.cap||M3.CAP_MAX),est_cost_per_video_usd:M3.videoCost(S),enforced_by:'server-side ledger + user Grok Bot in production (simulated here)'}, tiktok:S.plat.tt?{duration_s:S.dur,creator_rewards_eligible:S.dur>60}:null,
     platforms:plats, publish_via:'official APIs only', gates:['script','stills','video','final'], approvals:'hash-locked'}; }
 
+/* load the autosaved draft (validated: it may have been edited in devtools) */
+(function(){ const d=window.Store&&Store.getDraft(); if(d&&d.goal&&GOALS.find(g=>g.id===d.goal)) Object.assign(S,sanitizeIntake(d,{keepState:true}),{locking:false,playing:null,ackErr:false}); else S.playing=null; })();
 /* ---------- render ---------- */
 let changed=null, stepChanged=true;
 const A = k => (changed===k && !stepChanged) ? 'reveal' : '';
 function render(){
   if(!window.INTAKE_ON) return;
+  const fk=stepChanged?null:App.focusKey();
   document.getElementById('rail').innerHTML=rail();
   document.getElementById('mob').innerHTML=mobSteps();
   document.getElementById('sum').innerHTML=summary();
@@ -517,9 +553,10 @@ function render(){
   document.getElementById('foot').innerHTML=footer();
   applyPreviewVars(); placePills();
   if(changed){ const r=document.querySelector(`.srow[data-row="${S.step}"]`); r&&r.classList.add('flash'); }
-  stepChanged=false; changed=null; S.ackErr=false; saveDraft();
-  const imp=document.getElementById('impFile'); if(imp) imp.onchange=importIntake;
+  const stepWasChanged=stepChanged; stepChanged=false; changed=null; S.ackErr=false; saveDraft();
+  const imp=document.getElementById('impFile'); if(imp) imp.onchange=e=>{ importIntake(e); e.target.value=''; };
   App.a11y(document.querySelector('.vintake'));
+  if(fk) App.refocus(fk); else if(document.activeElement===document.body||!document.activeElement){ const h=document.querySelector('#content h1,#content h2'); if(h&&stepWasChanged){ h.tabIndex=-1; h.focus({preventScroll:true}); } }
 }
 function placePills(){ document.querySelectorAll('[data-seg]').forEach(s=>{const b=s.querySelector('.sel'),p=s.querySelector('.pill'); if(b){p.style.left=b.offsetLeft+'px';p.style.width=b.offsetWidth+'px';}}); }
 function go(n){ n=Math.max(1,Math.min(9,n)); if(n===S.step) return;
@@ -533,7 +570,9 @@ function onNiche(v){ const n=N(v); S.sub=n.subs[0]?n.subs[0][0]:null; const pre=
 function exportIntake(){ const blob=new Blob([JSON.stringify({app:'3x3',kind:'intake',version:1,exported_at:new Date().toISOString(),intake:intakeSnapshot()},null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`3x3-intake-${(S.name||'project').toLowerCase().replace(/[^a-z0-9]+/g,'-')}.json`; document.body.appendChild(a); a.click(); a.remove(); }
 function importIntake(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const o=JSON.parse(r.result); const I=o.intake||o;
-    if(!G(I.goal)||!N(I.niche)) throw new Error('Unknown goal or niche'); INTAKE_FIELDS.forEach(k=>{ if(I[k]!==undefined) S[k]=I[k]; }); S.locked=false; S.projectId=null; S.max=9; stepChanged=true; render(); App.toast('Intake imported'); }
+    if(!I||typeof I!=='object'||!G(I.goal)||!N(I.niche)) throw new Error('Unknown goal or niche'); const clean=sanitizeIntake(I);
+    Object.assign(S,clean); S.locked=false; S.projectId=null; S.max=9; S.aiAck=false; S.compAck=false; applyBundles(); stepChanged=true; render();
+    App.toast('Intake imported. Forced rules and the $'+M3.CAP_MAX+'/day cap were re-applied. Confirm the AI disclosure and the compliance check again.'); }
   catch(err){ App.toast('Import failed: '+err.message,'err'); } }; r.readAsText(f); }
 
 function intakeClick(e){
@@ -558,7 +597,7 @@ function intakeClick(e){
       case 'compack': S.compAck=a.checked; break;
       case 'newversion': { S.locked=false; S.projectId=null; S.version=(S.versions.length?Math.max(...S.versions.map(v=>v.v)):S.version)+1; S.compAck=false; stepChanged=true; history.replaceState(null,'','#/intake/9'); App.toast(`Editing v${S.version}. Earlier versions stay read-only.`); break; }
       case 'viewver': { const vv=S.versions.find(x=>x.v===+v); if(vv){ const w=window.open('', '_blank'); if(w){ w.document.title='3x3 intake v'+vv.v+' (read-only)'; w.document.body.style.cssText='background:#0B0F1A;color:#F5F7FA;font:12px monospace;white-space:pre;padding:16px'; w.document.body.textContent=JSON.stringify(vv,null,2); } } return; }
-      case 'lock': if(S.locked||S.locking) return; if(!canLock()){ if(!S.aiAck) go(9); else App.toast('Tick the compliance check first','err'); return; } if(S.step!==9){go(9);} S.locking=true; render();
+      case 'lock': if(S.locked||S.locking) return; if(!canLock()){ if(!S.aiAck) go(9); else App.toast(blockedGoal()?'This goal is blocked for this niche':topicHits().length?'Remove banned words from your topic first':!S.compAck?'Tick the compliance check first':'Write your topic first','err'); return; } if(S.step!==9){go(9);} S.locking=true; render();
         setTimeout(()=>{S.locking=false;S.locked=true;S.max=9;S.projectId=null;stepChanged=true; const snap=intakeSnapshot(); S.versions=S.versions.filter(x=>x.v!==S.version).concat([{v:S.version,locked_at:new Date().toISOString(),intake_hash:M3.hash(snap),intake:snap,rules:compileRules()}]);history.replaceState(null,'','#/intake/9');render();},1100); return;
       case 'create': { if(S.projectId && Store.getProject(S.projectId)){ location.hash='#/project/'+S.projectId; return; }
         if(S.topic===-1 && !S.ownTopic.trim()){ App.toast('Write your topic first, or pick a suggested one','err'); document.getElementById('ownT')&&document.getElementById('ownT').focus(); return; }
@@ -568,21 +607,23 @@ function intakeClick(e){
     }
     render(); return; }
   const s=e.target.closest('[data-set]');
-  if(s&&S.locked&&s.dataset.set!=='topic'){ App.toast(`v${S.version} is locked. Use "Edit as v${S.version+1}" on Review.`,'err'); return; }
+  if(s&&S.locked){ App.toast(`v${S.version} is locked. Use "Edit as v${S.version+1}" on Review.`,'err'); return; }
   if(s){ const k=s.dataset.set; let v=s.dataset.val; if(k==='dur'||k==='topic') v=+v;
     if(S[k]===v) return; S[k]=v; changed=k;
     if(k==='niche') onNiche(v);
-    if(k==='sub'){ applyBundles(); }
+    if(k==='sub'||k==='topic'){ applyBundles(); }
     if(k==='sub'&&REAL){ const f=RD.fit[`${S.niche}/${v}`]; if(f&&f.default&&STYLES.find(x=>x.id===f.default)) S.style=f.default; S.topic=0; }
     render(); }
 }
 document.addEventListener('click',intakeClick);
-document.addEventListener('focusin',e=>{ if(window.INTAKE_ON&&e.target.id==='ownT'&&S.topic!==-1){ S.topic=-1; document.querySelectorAll('.topic').forEach(t=>t.classList.remove('sel')); e.target.closest('.topic').classList.add('sel'); saveDraft(); } });
+document.addEventListener('focusin',e=>{ if(window.INTAKE_ON&&!S.locked&&e.target.id==='ownT'&&S.topic!==-1){ S.topic=-1; document.querySelectorAll('.topic').forEach(t=>t.classList.remove('sel')); e.target.closest('.topic').classList.add('sel'); saveDraft(); } });
 document.addEventListener('input',e=>{
   if(!window.INTAKE_ON) return;
   const t=e.target, k=t.dataset.in;
-  if(k&&S.locked&&k!=='ownTopic') return;
-  if(k==='cap'){ S.cap=Math.max(1,Math.min(500,Math.round(+t.value||20))); saveDraft(); return; }
+  if(k&&S.locked) return;
+  if(k==='cap'){ S.cap=Math.max(1,Math.min(M3.CAP_MAX,Math.round(+t.value||M3.CAP_MAX))); if(+t.value>M3.CAP_MAX) t.value=M3.CAP_MAX; saveDraft(); return; }
+  if(k==='ownTopic'){ const before=bundleIds().join(), hb=topicHits().join(); S.ownTopic=t.value.slice(0,160); if(S.topic!==-1) S.topic=-1;
+    if(bundleIds().join()!==before||topicHits().join()!==hb){ applyBundles(); S.compAck=false; render(); } else { document.getElementById('foot').innerHTML=footer(); const lb=document.querySelector('.lockbtn'); if(lb) lb.disabled=!canLock(); saveDraft(); } return; }
   if(k){ S[k]= k==='pace'?+t.value:t.value; if(k==='pace'){document.getElementById('paceV').textContent=S.pace.toFixed(2)+'×';}
     document.querySelectorAll(`[data-bind="${k}"]`).forEach(el=>el.textContent=t.value);
     applyPreviewVars(); document.getElementById('sum').innerHTML=summary(); document.getElementById('rail').innerHTML=rail(); saveDraft(); return; }

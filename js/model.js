@@ -21,8 +21,6 @@ M.CONNS = [
    perms:'Publish Reels to your professional account.', api:'Instagram Graph API (Reels content publishing)'},
   {id:'tiktok', group:'social', n:'TikTok', btn:'Connect TikTok', kind:'oauth', icon:'tt', c:'#F5F7FA', plat:'tt', provider:'TikTok', acct:'@healthybitesph',
    perms:'Read your basic profile and post videos.', api:'TikTok Content Posting API'},
-  {id:'gdrive', group:'social', n:'Google Drive', btn:'Connect Google Drive', kind:'oauth', icon:'up', c:'#16C784', optional:true, later:true, provider:'Google', acct:'johnny@…',
-   perms:'Coming later. Not part of the current architecture and not required: final videos download from 3x3.', api:'Not available yet'},
 ];
 M.SOCIAL_STATUS = {connected:'Connected as', relogin:'Needs sign-in again', missing:'Disconnected'};
 M.PUBLISH_NOTE = 'Nothing is posted until you approve it. Alcohol-history videos are always uploaded as private: you set the 18+ age limit in the platform\'s app and publish them yourself. Kids videos go to YouTube only, marked Made for Kids.';
@@ -118,7 +116,21 @@ M.AI_DISCLOSURE = {
 };
 M.CLAIM_NICHES = ['health_nutrition','human_body','finance'];
 M.CLAIM_SUBS = ['clinic_education','investing_basics','credit_debt','side_hustles','fitness_gym','real_estate'];
-M.needsNoClaims = I => M.CLAIM_NICHES.includes(I.niche) || M.CLAIM_SUBS.includes(I.sub) || /crypto|bitcoin|forex|stock|supplement|weight ?loss/i.test(I.ownTopic || '');
+/* ---------- custom-topic screening (word boundaries, so 'beginner', 'engine', 'drum', 'livestock' don't match) ---------- */
+M.TOPIC_KEYWORDS = {
+  crypto:    /\b(crypto\w*|bitcoin|btc|ethereum|eth|altcoins?|memecoins?|airdrops?|presales?|nfts?|defi|web3|blockchain|tokens? sale|ico|100x|1000x|to the moon)\b/i,
+  finance:   /\b(invest(ing|ment|ments|or|ors)?|stocks?|forex|day ?trad\w*|trading|passive income|loans?|credit cards?|debt|mortgages?|retire(ment)?|dividends?|get rich)\b/i,
+  health:    /\b(supplements?|weight ?loss|diets?|cures?|cured|vitamins?|diseases?|detox|immunity|immune|cancer|diabetes|keto|medicines?|symptoms?)\b/i,
+  alcohol:   /\b(liquor|alcohol(ic)?|wines?|beers?|cocktails?|whiske?y|bourbon|scotch|rum|gin|vodka|tequila|mezcal|brandy|cognac|sake|soju|lambanog|brew(ery|eries|ing)?|distiller(y|ies))\b/i,
+  true_crime:/\b(murders?|murdered|serial killers?|true crime|homicides?|kidnapp\w*|assassinat\w*)\b/i,
+  kids:      /\b(for kids|for children|toddlers?|preschool\w*|nursery rhymes?|kindergarten)\b/i,
+};
+M.IMPLIES = {crypto:['finance','crypto']};
+M.topicText = I => (I && I.topic === -1 ? (I.ownTopic || '') : '');
+M.topicBundles = text => { const out = []; Object.entries(M.TOPIC_KEYWORDS).forEach(([b, re]) => { if (re.test(text || '')) (M.IMPLIES[b] || [b]).forEach(x => out.includes(x) || out.push(x)); }); return out; };
+M.wordRe = w => new RegExp('(^|[^\\p{L}\\p{N}])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') + '($|[^\\p{L}\\p{N}])', 'iu');
+M.bannedHits = (text, words) => (words || []).filter(w => w && M.wordRe(w).test(text || ''));
+M.needsNoClaims = I => M.CLAIM_NICHES.includes(I.niche) || M.CLAIM_SUBS.includes(I.sub) || M.topicBundles(M.topicText(I)).some(b => ['crypto','finance','health'].includes(b));
 M.BANNED_PRESET = {
   health_nutrition:['cure','treat','prevent','heal','detox','miracle','guaranteed'],
   human_body:['cure','treat','prevent','heal','miracle','guaranteed'],
@@ -126,8 +138,19 @@ M.BANNED_PRESET = {
   local_business:['guaranteed','best in town','#1 rated'],
 };
 M.ALCOHOL_SUBS = ['liquor_history'];
-M.isAlcohol = I => M.ALCOHOL_SUBS.includes(I.sub) || /liquor|alcohol|wine|beer|cocktail|whisk(e)?y|rum|gin|vodka/i.test(I.ownTopic || '');
-M.ALCOHOL_YT = 'Alcohol-history videos are always uploaded as private: you set the 18+ age limit in the platform\'s app and publish them yourself. This applies on every platform (YouTube private, Facebook unpublished, TikTok private, Instagram blocked until you confirm the account\'s minimum age).';
+M.isAlcohol = I => M.ALCOHOL_SUBS.includes(I.sub) || M.topicBundles(M.topicText(I)).includes('alcohol');
+M.ALCOHOL_YT = 'Alcohol-history videos are always uploaded as private drafts on every platform (YouTube private, Facebook unpublished, TikTok private draft, Instagram held). A "Needs you" step then asks you to set the 18+ age limit in each platform\'s own app and tick "I set 18+". No affiliate or retailer links, and the alcohol disclaimer is always on.';
+M.ALCOHOL_MODES = {yt:'private draft (privacyStatus=private)', fb:'unpublished draft', tt:'private draft (SELF_ONLY)', ig:'held as a draft: not posted'};
+M.ALCOHOL_STEPS = {
+  yt:'YouTube Studio → Content → the video → Details → Show more → Age restriction → "Yes, restrict my video to viewers over 18" → Save. Leave "made for kids" = No.',
+  tt:'TikTok app → open the draft → More options → Audience controls → 18+ only → Post.',
+  fb:'Meta Business Suite → the post → age restriction 18+ (Page-level alcohol age restriction if needed).',
+  ig:'Instagram Settings → Account → Minimum age (alcohol) = 18+ for your market, then post the held Reel yourself.'};
+/* ---------- spend cap (estimates; the real ledger lives server-side / in the user's bot) ---------- */
+M.CAP_MAX = 20;
+M.stageCost = (k, I) => { const n = Math.round((I.dur || 45) / 2.5), ch = Math.round((I.dur || 45) * 155 / 60 * 5.8);
+  return ({rules:0, script:0.02, voice: I.vo === false ? 0 : +(ch * 0.0003).toFixed(2), stills:+(n * 0.07).toFixed(2), video:+(n * 0.3).toFixed(2), final:0.05, publish:0})[k] || 0; };
+M.videoCost = I => +['script','voice','stills','video','final'].reduce((a, k) => a + M.stageCost(k, I), 0).toFixed(2);
 M.AFFILIATE_LINE = '#ad · I may earn a commission from links in my bio';
 M.isAffiliate = I => I.goal === 'affiliate';
 
