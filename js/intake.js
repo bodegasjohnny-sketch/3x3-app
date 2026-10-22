@@ -240,7 +240,7 @@ const TRANSIENT=['locking','playing','ackErr','sample'];
 function saveDraft(){ if(!window.Store) return; const o={}; Object.keys(S).forEach(k=>{ if(!TRANSIENT.includes(k)) o[k]=S[k]; }); Store.saveDraft(o); const el=document.querySelector('.saved'); if(el){ el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); el.lastChild.textContent=' Autosaved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }
 const INTAKE_FIELDS=['goal','niche','sub','format','dur','aspect','style','vo','voice','lang','pace','energy','pron','name','handle','pal','fh','fb','cta','end','capStyle','capPos','counter','music','sfx','banned','disclaimer','plat','kids','aiAck','aiTag','noClaims','compAck','ownTopic','topic','cap','market','voicePicked','aiLabel'];
 const intakeSnapshot=()=>{ const o={}; INTAKE_FIELDS.forEach(k=>o[k]=JSON.parse(JSON.stringify(S[k]))); return o; };
-const REALISTIC=['photoreal_macro','archival_doc','photoreal','cinematic'];
+const REALISTIC=['photoreal_macro','archival_doc','photoreal','cinematic','style_montage'];  /* style_montage: ai_disclosure.label = always (AI images + AI voice), so the tag is locked on */
 const isRealistic=()=>REALISTIC.includes(S.style);
 /* MASTER_PACK safety.ai_disclosure {label: auto|always}: auto = platform AI label whenever output is photoreal or could be mistaken for real.
    A realistic synthetic narrator counts as could-be-mistaken-for-real (borderline), so voiceover on → label on. */

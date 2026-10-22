@@ -11,7 +11,11 @@ cats = [dict(id=c['id'], name=c['name'], subs=[dict(id=x['id'], name=x['name'], 
         ever=x.get('evergreen'), bundles=x.get('rule_bundles',[]), dstyle=x.get('default_style'), alts=x.get('alt_styles',[]), seeds=x.get('topic_seeds',[])) for x in c['subs']])
         for c in t['categories']]
 styles = [dict(id=x['id'], name=x['name'], desc=x['description'], layer=x['style_module']['image_layer'], suffix=x['style_module']['image_suffix'],
-          moves=x['motion']['allowed_camera_moves'], caps=x['captions'], fit=x.get('fit_goals',[])) for x in s['styles']]
+          moves=x['motion']['allowed_camera_moves'], caps=x['captions'], fit=x.get('fit_goals',[]),
+          **({'montage': True, 'preset': x.get('preset')} if x.get('montage') else {})) for x in s['styles']]
+# Style Montage preset (approved 2026-10-22): surface the approved defaults in the style card text.
+for x in styles:
+    if x.get('montage'): x['desc'] += ' Preset: 5 habits x 2 shots, whoosh-only cuts (no impact), plain-coin mascot + typed end card, licensed library music, PEAT flash check before publishing, xAI API for published stills, provenance per still. AI label always on.'
 # Style names and prompts come from styles.json as-is (the pack already uses generic names; no alias map is shipped).
 keep = ('name','forced','user_can_disable','banned_words','banned_claims','disclaimer','allowed_platforms','platform_note','goals_blocked','cta','extends','affiliate','age_gate','publishing','pii','sources','visual_rules','subject_rules','platform_flags')
 bundles = {k: {f: v[f] for f in keep if f in v} for k, v in t.get('rule_bundles', {}).items()}
